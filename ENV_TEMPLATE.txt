@@ -1,0 +1,15 @@
+# Environment Configuration
+# Copy this file and create a .env file with your actual values
+
+# Server Configuration
+PORT=3000
+NODE_ENV=development
+
+# Neon Database Connection
+# Get your connection string from: https://console.neon.tech
+DATABASE_URL=postgresql://username:password@your-neon-hostname.neon.tech/database_name?sslmode=require
+
+# CORS Configuration
+# Add your frontend URLs separated by commas
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+
