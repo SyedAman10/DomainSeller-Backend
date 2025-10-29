@@ -1,15 +1,19 @@
-# Environment Configuration
-# Copy this file and create a .env file with your actual values
-
 # Server Configuration
-PORT=3000
+PORT=5000
 NODE_ENV=development
 
 # Neon Database Connection
-# Get your connection string from: https://console.neon.tech
-DATABASE_URL=postgresql://username:password@your-neon-hostname.neon.tech/database_name?sslmode=require
+NEON_DATABASE_URL=postgresql://username:password@your-neon-hostname.neon.tech/database_name?sslmode=require
 
-# CORS Configuration
-# Add your frontend URLs separated by commas
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+# Mailgun Configuration
+MAILGUN_API_KEY=xxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx
+MAILGUN_DOMAIN=your-domain.mailgun.org
+MAILGUN_FROM_EMAIL=noreply@your-domain.mailgun.org
+
+# Frontend URL (for CORS)
+FRONTEND_URL=http://localhost:3000
+
+# Email Queue Settings
+EMAIL_BATCH_LIMIT=10
+QUEUE_CHECK_INTERVAL=*/5 * * * *
 

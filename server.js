@@ -1,42 +1,51 @@
 const express = require('express');
 const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
+const bodyParser = require('body-parser');
 require('dotenv').config();
 
 const { testConnection } = require('./config/database');
-const routes = require('./routes');
+const { startEmailQueue } = require('./services/emailQueue');
+
+// Import routes
+const campaignRoutes = require('./routes/campaigns');
+const webhookRoutes = require('./routes/webhooks');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(helmet()); // Security headers
-app.use(morgan('dev')); // Logging
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true
 }));
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'OK',
-    message: 'DomainSeller Backend is running',
-    timestamp: new Date().toISOString()
+    message: 'Campaign Backend is running',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
 // API Routes
-app.use('/api', routes);
+app.use('/api/campaigns', campaignRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
     error: 'Not Found',
-    message: 'The requested resource does not exist',
+    message: 'The requested endpoint does not exist',
     path: req.path
   });
 });
@@ -51,17 +60,30 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server and test database connection
+// Start server
 const startServer = async () => {
   try {
     // Test database connection
-    await testConnection();
-    
+    const dbConnected = await testConnection();
+    if (!dbConnected) {
+      throw new Error('Failed to connect to database');
+    }
+
+    // Start email queue processor
+    startEmailQueue();
+    console.log('✅ Email queue processor started');
+
     // Start listening
     app.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
+      console.log('');
+      console.log('='.repeat(50));
+      console.log(`🚀 Campaign Backend Server Running`);
+      console.log(`📡 Port: ${PORT}`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`📡 Health check: http://localhost:${PORT}/health`);
+      console.log(`🔗 Health Check: http://localhost:${PORT}/api/health`);
+      console.log(`📧 Mailgun Domain: ${process.env.MAILGUN_DOMAIN}`);
+      console.log('='.repeat(50));
+      console.log('');
     });
   } catch (error) {
     console.error('Failed to start server:', error);
@@ -72,4 +94,3 @@ const startServer = async () => {
 startServer();
 
 module.exports = app;
-
