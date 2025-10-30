@@ -62,6 +62,9 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/monitoring', monitoringRoutes);
 app.use('/api/inbound', inboundRoutes);
 
+// Legacy route for Mailgun (redirects to /api/inbound)
+app.use('/inbound', inboundRoutes);
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
