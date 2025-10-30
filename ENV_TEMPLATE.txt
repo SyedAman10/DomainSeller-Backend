@@ -10,6 +10,10 @@ MAILGUN_API_KEY=xxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx
 MAILGUN_DOMAIN=your-domain.mailgun.org
 MAILGUN_FROM_EMAIL=noreply@your-domain.mailgun.org
 
+# OpenAI Configuration (for AI Email Agent)
+OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+AI_MODEL=gpt-4o-mini
+
 # Frontend URL (for CORS)
 FRONTEND_URL=http://localhost:3000
 

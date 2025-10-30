@@ -51,11 +51,15 @@ curl http://localhost:5000/api/campaigns/1/stats
 curl -X POST http://localhost:5000/api/campaigns/schedule-followup \
   -H "Content-Type: application/json" \
   -d '{
-    "campaignId": 1,
+    "campaignId": "1",
     "buyerEmail": "buyer@example.com",
     "subject": "Still interested in example.com?",
     "body": "<p>Hi there!</p><p>Just following up to see if you had any questions about <strong>example.com</strong>.</p><p>Best regards,<br>Your Name</p>",
-    "scheduledFor": "2025-11-01T14:00:00Z"
+    "scheduledFor": "2025-11-01T14:00:00Z",
+    "userId": 1,
+    "buyerId": "buyer123",
+    "buyerName": "John Doe",
+    "domainName": "example.com"
   }'
 ```
 
@@ -79,13 +83,16 @@ const response = await fetch('http://localhost:5000/api/campaigns/send-batch', {
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
-    campaignId: 1,
+    campaignId: '1',
     emails: [
       {
         to: 'buyer@example.com',
         subject: 'Premium Domain Available',
         html: '<h1>Hello!</h1><p>Interested in example.com?</p>',
-        tags: ['campaign-1']
+        tags: ['campaign-1'],
+        userId: 1,
+        buyerId: 'buyer123',
+        buyerName: 'John Doe'
       }
     ]
   })
@@ -113,11 +120,15 @@ const response = await fetch('http://localhost:5000/api/campaigns/schedule-follo
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
-    campaignId: 1,
+    campaignId: '1',
     buyerEmail: 'buyer@example.com',
     subject: 'Following up',
     body: '<p>Just checking in...</p>',
-    scheduledFor: scheduledFor.toISOString()
+    scheduledFor: scheduledFor.toISOString(),
+    userId: 1,
+    buyerId: 'buyer123',
+    buyerName: 'John Doe',
+    domainName: 'example.com'
   })
 });
 

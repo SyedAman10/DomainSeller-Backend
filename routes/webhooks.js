@@ -50,7 +50,7 @@ router.post('/mailgun', async (req, res) => {
     // Find the sent email by Mailgun message ID
     const sentEmail = await query(
       `SELECT id, campaign_id FROM sent_emails 
-       WHERE mailgun_id = $1 OR buyer_email = $2
+       WHERE mailgun_message_id = $1 OR buyer_email = $2
        ORDER BY sent_at DESC LIMIT 1`,
       [message?.headers?.['message-id'], recipient]
     );
@@ -88,12 +88,30 @@ router.post('/mailgun', async (req, res) => {
       // Update sent_emails status based on event
       if (event === 'delivered') {
         await query(
-          `UPDATE sent_emails SET status = 'delivered' WHERE id = $1`,
+          `UPDATE sent_emails 
+           SET delivery_status = 'delivered' 
+           WHERE id = $1`,
+          [emailId]
+        );
+      } else if (event === 'opened') {
+        await query(
+          `UPDATE sent_emails 
+           SET is_opened = true, opened_at = NOW(), open_count = COALESCE(open_count, 0) + 1, last_opened = NOW()
+           WHERE id = $1`,
+          [emailId]
+        );
+      } else if (event === 'clicked') {
+        await query(
+          `UPDATE sent_emails 
+           SET is_clicked = true, clicked_at = NOW(), click_count = COALESCE(click_count, 0) + 1, last_clicked = NOW()
+           WHERE id = $1`,
           [emailId]
         );
       } else if (event === 'bounced' || event === 'failed') {
         await query(
-          `UPDATE sent_emails SET status = 'bounced' WHERE id = $1`,
+          `UPDATE sent_emails 
+           SET delivery_status = 'bounced' 
+           WHERE id = $1`,
           [emailId]
         );
       }

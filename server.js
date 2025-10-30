@@ -9,6 +9,8 @@ const { startEmailQueue } = require('./services/emailQueue');
 // Import routes
 const campaignRoutes = require('./routes/campaigns');
 const webhookRoutes = require('./routes/webhooks');
+const monitoringRoutes = require('./routes/monitoring');
+const inboundRoutes = require('./routes/inbound');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -23,7 +25,24 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  const timestamp = new Date().toISOString();
+  console.log('\n' + '='.repeat(60));
+  console.log(`📥 ${req.method} ${req.path}`);
+  console.log(`⏰ ${timestamp}`);
+  
+  if (Object.keys(req.query).length > 0) {
+    console.log('📋 Query:', JSON.stringify(req.query, null, 2));
+  }
+  
+  if (Object.keys(req.params).length > 0) {
+    console.log('🎯 Params:', JSON.stringify(req.params, null, 2));
+  }
+  
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log('📦 Body:', JSON.stringify(req.body, null, 2));
+  }
+  
+  console.log('='.repeat(60));
   next();
 });
 
@@ -40,6 +59,8 @@ app.get('/api/health', (req, res) => {
 // API Routes
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/monitoring', monitoringRoutes);
+app.use('/api/inbound', inboundRoutes);
 
 // 404 handler
 app.use((req, res) => {
