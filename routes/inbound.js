@@ -46,7 +46,8 @@ router.post('/mailgun', async (req, res) => {
         c.campaign_name,
         c.domain_name,
         c.email_tone,
-        c.user_id
+        c.user_id,
+        c.created_at
        FROM campaigns c
        LEFT JOIN sent_emails se ON se.campaign_id = c.campaign_id
        LEFT JOIN scheduled_emails sch ON sch.campaign_id = c.campaign_id
