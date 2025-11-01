@@ -67,7 +67,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
+// Health check endpoint (both with and without /api for Nginx compatibility)
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    message: 'Campaign Backend is running',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'OK',
@@ -77,11 +85,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// API Routes
+// API Routes (with /api prefix)
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/monitoring', monitoringRoutes);
 app.use('/api/inbound', inboundRoutes);
+
+// API Routes (without /api prefix for Nginx)
+app.use('/campaigns', campaignRoutes);
+app.use('/webhooks', webhookRoutes);
+app.use('/monitoring', monitoringRoutes);
 
 // Legacy route for Mailgun (redirects to /api/inbound)
 app.use('/inbound', inboundRoutes);
