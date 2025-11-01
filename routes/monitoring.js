@@ -10,6 +10,17 @@ router.get('/campaigns/active', async (req, res) => {
   console.log('📊 Fetching active campaigns...');
   
   try {
+    const { userId } = req.query;
+    
+    let whereClause = "c.status IN ('active', 'draft')";
+    let params = [];
+    
+    if (userId) {
+      whereClause += " AND c.user_id = $1";
+      params.push(userId);
+      console.log(`   Filtering by user ID: ${userId}`);
+    }
+    
     const campaigns = await query(`
       SELECT 
         c.*,
@@ -19,9 +30,9 @@ router.get('/campaigns/active', async (req, res) => {
         (SELECT COUNT(*) FROM sent_emails WHERE campaign_id = c.campaign_id AND is_opened = true) as emails_opened,
         (SELECT COUNT(*) FROM sent_emails WHERE campaign_id = c.campaign_id AND is_clicked = true) as emails_clicked
       FROM campaigns c
-      WHERE c.status IN ('active', 'draft')
+      WHERE ${whereClause}
       ORDER BY c.updated_at DESC
-    `);
+    `, params);
 
     res.json({
       success: true,
@@ -125,21 +136,42 @@ router.get('/dashboard', async (req, res) => {
   console.log('🎯 Fetching dashboard data...');
   
   try {
+    const { userId } = req.query;
+    
+    let userFilter = '';
+    let params = [];
+    
+    if (userId) {
+      userFilter = 'AND c.user_id = $1';
+      params.push(userId);
+      console.log(`   Filtering by user ID: ${userId}`);
+    }
+    
     // Get overall stats
-    const stats = await query(`
-      SELECT 
-        (SELECT COUNT(*) FROM campaigns WHERE status = 'active') as active_campaigns,
-        (SELECT COUNT(*) FROM campaigns WHERE status = 'draft') as draft_campaigns,
-        (SELECT COUNT(*) FROM sent_emails WHERE sent_at > NOW() - INTERVAL '24 hours') as emails_sent_24h,
-        (SELECT COUNT(*) FROM sent_emails WHERE sent_at > NOW() - INTERVAL '7 days') as emails_sent_7d,
-        (SELECT COUNT(*) FROM scheduled_emails WHERE status = 'pending') as emails_queued,
-        (SELECT COUNT(*) FROM sent_emails WHERE is_opened = true AND sent_at > NOW() - INTERVAL '7 days') as emails_opened_7d,
-        (SELECT COUNT(*) FROM sent_emails WHERE is_clicked = true AND sent_at > NOW() - INTERVAL '7 days') as emails_clicked_7d,
-        (SELECT COUNT(DISTINCT campaign_id) FROM sent_emails WHERE sent_at > NOW() - INTERVAL '24 hours') as campaigns_sent_today
-    `);
+    const statsQuery = userId 
+      ? `SELECT 
+          (SELECT COUNT(*) FROM campaigns WHERE status = 'active' AND user_id = $1) as active_campaigns,
+          (SELECT COUNT(*) FROM campaigns WHERE status = 'draft' AND user_id = $1) as draft_campaigns,
+          (SELECT COUNT(*) FROM sent_emails se JOIN campaigns c ON se.campaign_id = c.campaign_id WHERE se.sent_at > NOW() - INTERVAL '24 hours' AND c.user_id = $1) as emails_sent_24h,
+          (SELECT COUNT(*) FROM sent_emails se JOIN campaigns c ON se.campaign_id = c.campaign_id WHERE se.sent_at > NOW() - INTERVAL '7 days' AND c.user_id = $1) as emails_sent_7d,
+          (SELECT COUNT(*) FROM scheduled_emails se JOIN campaigns c ON se.campaign_id = c.campaign_id WHERE se.status = 'pending' AND c.user_id = $1) as emails_queued,
+          (SELECT COUNT(*) FROM sent_emails se JOIN campaigns c ON se.campaign_id = c.campaign_id WHERE se.is_opened = true AND se.sent_at > NOW() - INTERVAL '7 days' AND c.user_id = $1) as emails_opened_7d,
+          (SELECT COUNT(*) FROM sent_emails se JOIN campaigns c ON se.campaign_id = c.campaign_id WHERE se.is_clicked = true AND se.sent_at > NOW() - INTERVAL '7 days' AND c.user_id = $1) as emails_clicked_7d,
+          (SELECT COUNT(DISTINCT se.campaign_id) FROM sent_emails se JOIN campaigns c ON se.campaign_id = c.campaign_id WHERE se.sent_at > NOW() - INTERVAL '24 hours' AND c.user_id = $1) as campaigns_sent_today`
+      : `SELECT 
+          (SELECT COUNT(*) FROM campaigns WHERE status = 'active') as active_campaigns,
+          (SELECT COUNT(*) FROM campaigns WHERE status = 'draft') as draft_campaigns,
+          (SELECT COUNT(*) FROM sent_emails WHERE sent_at > NOW() - INTERVAL '24 hours') as emails_sent_24h,
+          (SELECT COUNT(*) FROM sent_emails WHERE sent_at > NOW() - INTERVAL '7 days') as emails_sent_7d,
+          (SELECT COUNT(*) FROM scheduled_emails WHERE status = 'pending') as emails_queued,
+          (SELECT COUNT(*) FROM sent_emails WHERE is_opened = true AND sent_at > NOW() - INTERVAL '7 days') as emails_opened_7d,
+          (SELECT COUNT(*) FROM sent_emails WHERE is_clicked = true AND sent_at > NOW() - INTERVAL '7 days') as emails_clicked_7d,
+          (SELECT COUNT(DISTINCT campaign_id) FROM sent_emails WHERE sent_at > NOW() - INTERVAL '24 hours') as campaigns_sent_today`;
+    
+    const stats = await query(statsQuery, params);
 
     // Get next scheduled email
-    const nextEmail = await query(`
+    const nextEmailQuery = `
       SELECT 
         se.scheduled_for,
         se.buyer_email,
@@ -148,13 +180,14 @@ router.get('/dashboard', async (req, res) => {
         EXTRACT(EPOCH FROM (se.scheduled_for - NOW())) as seconds_until_send
       FROM scheduled_emails se
       JOIN campaigns c ON se.campaign_id = c.campaign_id
-      WHERE se.status = 'pending' AND se.scheduled_for > NOW()
+      WHERE se.status = 'pending' AND se.scheduled_for > NOW() ${userFilter}
       ORDER BY se.scheduled_for ASC
       LIMIT 1
-    `);
+    `;
+    const nextEmail = await query(nextEmailQuery, params);
 
     // Get recent activity
-    const recentActivity = await query(`
+    const recentActivityQuery = `
       SELECT 
         'sent' as activity_type,
         se.sent_at as activity_time,
@@ -163,9 +196,11 @@ router.get('/dashboard', async (req, res) => {
         c.domain_name
       FROM sent_emails se
       JOIN campaigns c ON se.campaign_id = c.campaign_id
+      ${userId ? 'WHERE c.user_id = $1' : ''}
       ORDER BY se.sent_at DESC
       LIMIT 10
-    `);
+    `;
+    const recentActivity = await query(recentActivityQuery, params);
 
     res.json({
       success: true,
