@@ -88,10 +88,27 @@ app.use('/inbound', inboundRoutes);
 
 // 404 handler
 app.use((req, res) => {
+  console.error('❌ 404 NOT FOUND:');
+  console.error(`   Path: ${req.method} ${req.path}`);
+  console.error(`   Origin: ${req.headers.origin}`);
+  console.error(`   Full URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`);
+  
   res.status(404).json({
     error: 'Not Found',
     message: 'The requested endpoint does not exist',
-    path: req.path
+    path: req.path,
+    method: req.method,
+    availableRoutes: [
+      'POST /api/campaigns',
+      'GET /api/campaigns',
+      'GET /api/campaigns/:id',
+      'PUT /api/campaigns/:id',
+      'DELETE /api/campaigns/:id',
+      'POST /api/campaigns/send-batch',
+      'GET /api/health',
+      'GET /api/monitoring/dashboard',
+      'GET /api/monitoring/campaigns/active'
+    ]
   });
 });
 
