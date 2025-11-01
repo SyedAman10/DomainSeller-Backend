@@ -648,17 +648,24 @@ router.delete('/', async (req, res) => {
   console.log('🗑️  Bulk deleting campaigns...');
   
   try {
-    const { campaignIds, userId } = req.body;
+    let { campaignIds, campaignId, userId } = req.body;
+
+    // Handle both single campaignId and array campaignIds
+    if (!campaignIds && campaignId) {
+      // Convert single campaignId to array
+      campaignIds = [campaignId];
+      console.log(`   Converting single campaignId to array: [${campaignId}]`);
+    }
 
     if (!campaignIds || !Array.isArray(campaignIds) || campaignIds.length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'campaignIds array is required',
-        message: 'Provide an array of campaign IDs to delete'
+        error: 'campaignIds array or campaignId is required',
+        message: 'Provide campaignId (string) or campaignIds (array) to delete'
       });
     }
 
-    console.log(`   Deleting ${campaignIds.length} campaigns...`);
+    console.log(`   Deleting ${campaignIds.length} campaign(s): ${campaignIds.join(', ')}`);
     if (userId) {
       console.log(`   Filtering by user ID: ${userId}`);
     }
@@ -676,7 +683,7 @@ router.delete('/', async (req, res) => {
 
     const result = await query(query_text, params);
 
-    console.log(`✅ Deleted ${result.rows.length} campaigns`);
+    console.log(`✅ Deleted ${result.rows.length} campaign(s)`);
 
     res.json({
       success: true,
