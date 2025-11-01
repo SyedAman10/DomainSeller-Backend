@@ -641,6 +641,60 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * DELETE /api/campaigns
+ * Bulk delete campaigns (requires campaignIds array)
+ */
+router.delete('/', async (req, res) => {
+  console.log('🗑️  Bulk deleting campaigns...');
+  
+  try {
+    const { campaignIds, userId } = req.body;
+
+    if (!campaignIds || !Array.isArray(campaignIds) || campaignIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'campaignIds array is required',
+        message: 'Provide an array of campaign IDs to delete'
+      });
+    }
+
+    console.log(`   Deleting ${campaignIds.length} campaigns...`);
+    if (userId) {
+      console.log(`   Filtering by user ID: ${userId}`);
+    }
+
+    // Build query with user filter if provided
+    let query_text = 'DELETE FROM campaigns WHERE campaign_id = ANY($1)';
+    let params = [campaignIds];
+
+    if (userId) {
+      query_text += ' AND user_id = $2';
+      params.push(userId);
+    }
+
+    query_text += ' RETURNING *';
+
+    const result = await query(query_text, params);
+
+    console.log(`✅ Deleted ${result.rows.length} campaigns`);
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.rows.length} campaign(s)`,
+      deleted: result.rows.length,
+      campaigns: result.rows
+    });
+  } catch (error) {
+    console.error('❌ Error bulk deleting campaigns:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete campaigns',
+      message: error.message
+    });
+  }
+});
+
+/**
  * PUT /api/campaigns/:campaignId
  * Update campaign details
  */
