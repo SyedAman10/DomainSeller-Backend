@@ -3,6 +3,11 @@ const router = express.Router();
 const { query } = require('../config/database');
 const { generateAIResponse, analyzeBuyerIntent } = require('../services/aiAgent');
 const { sendEmail } = require('../services/emailService');
+const { 
+  notifyNewReply, 
+  notifyAutoResponse, 
+  notifyManualSend 
+} = require('../services/notificationService');
 
 /**
  * POST /api/inbound/mailgun
@@ -47,7 +52,9 @@ router.post('/mailgun', async (req, res) => {
         c.domain_name,
         c.email_tone,
         c.user_id,
-        c.created_at
+        c.created_at,
+        c.auto_response_enabled,
+        c.notification_email
        FROM campaigns c
        LEFT JOIN sent_emails se ON se.campaign_id = c.campaign_id
        LEFT JOIN scheduled_emails sch ON sch.campaign_id = c.campaign_id
@@ -163,46 +170,135 @@ router.post('/mailgun', async (req, res) => {
       console.warn('⚠️  AI generation failed, using fallback response');
     }
 
-    // Store the AI response
-    await query(
-      `INSERT INTO email_conversations 
-        (campaign_id, buyer_email, buyer_name, direction, subject, message_content, received_at, user_id, domain_name, ai_generated)
-       VALUES ($1, $2, $3, 'outbound', $4, $5, NOW(), $6, $7, true)`,
-      [
-        campaign.campaign_id,
-        buyerEmail,
-        buyerName,
-        `Re: ${subject}`,
-        aiResponse.reply,
-        campaign.user_id,
-        campaign.domain_name
-      ]
-    );
+    const responseText = aiResponse.reply;
+    const autoResponseEnabled = campaign.auto_response_enabled !== false; // Default to true if null
+    const notificationEmail = campaign.notification_email;
 
-    console.log('💾 Stored AI response in database');
-
-    // Send the AI response via email
-    console.log('📤 Sending AI-generated response...');
+    console.log(`⚙️  Auto-response: ${autoResponseEnabled ? 'ON' : 'OFF'}`);
     
-    await sendEmail({
-      to: buyerEmail,
-      subject: `Re: ${subject}`,
-      html: aiResponse.reply.replace(/\n/g, '<br>'),
-      text: aiResponse.reply,
-      tags: [`campaign-${campaign.campaign_id}`, 'ai-reply', 'inbound-response']
-    });
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // MODE 1: AUTO-RESPONSE ENABLED (Send immediately)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (autoResponseEnabled) {
+      console.log('🚀 AUTO-RESPONSE MODE: Sending reply immediately...');
+      
+      // Store the AI response
+      await query(
+        `INSERT INTO email_conversations 
+          (campaign_id, buyer_email, buyer_name, direction, subject, message_content, received_at, user_id, domain_name, ai_generated)
+         VALUES ($1, $2, $3, 'outbound', $4, $5, NOW(), $6, $7, true)`,
+        [
+          campaign.campaign_id,
+          buyerEmail,
+          buyerName,
+          `Re: ${subject}`,
+          responseText,
+          campaign.user_id,
+          campaign.domain_name
+        ]
+      );
 
-    console.log('✅ AI response sent successfully!');
-    console.log('════════════════════════════════════════════════════════════\n');
+      console.log('💾 Stored AI response in database');
 
-    res.status(200).json({
-      success: true,
-      message: 'Email processed and AI response sent',
-      campaign: campaign.campaign_name,
-      domain: campaign.domain_name,
-      intent: intent,
-      aiGenerated: !aiResponse.usingFallback
-    });
+      // Send the AI response via email
+      console.log('📤 Sending AI-generated response...');
+      
+      await sendEmail({
+        to: buyerEmail,
+        subject: `Re: ${subject}`,
+        html: responseText.replace(/\n/g, '<br>'),
+        text: responseText,
+        tags: [`campaign-${campaign.campaign_id}`, 'ai-reply', 'inbound-response']
+      });
+
+      console.log('✅ AI response sent successfully!');
+
+      // Send notification to user if email provided
+      if (notificationEmail) {
+        console.log(`📧 Sending notification to ${notificationEmail}...`);
+        await notifyAutoResponse({
+          notificationEmail,
+          campaignName: campaign.campaign_name,
+          domainName: campaign.domain_name,
+          buyerEmail,
+          buyerMessage: messageContent,
+          aiResponse: responseText
+        });
+        console.log('✅ Notification sent!');
+      }
+
+      console.log('════════════════════════════════════════════════════════════\n');
+
+      return res.status(200).json({
+        success: true,
+        message: 'Email processed and AI response sent',
+        campaign: campaign.campaign_name,
+        domain: campaign.domain_name,
+        mode: 'auto',
+        responseSent: true,
+        notificationSent: !!notificationEmail,
+        intent: intent
+      });
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // MODE 2: AUTO-RESPONSE DISABLED (Draft for review)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    else {
+      console.log('📝 MANUAL-REVIEW MODE: Creating draft for review...');
+      
+      // Store as draft response
+      const draftResult = await query(
+        `INSERT INTO draft_responses 
+          (campaign_id, buyer_email, buyer_name, inbound_message, suggested_response, subject, status, user_id, domain_name)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)
+         RETURNING id`,
+        [
+          campaign.campaign_id,
+          buyerEmail,
+          buyerName,
+          messageContent,
+          responseText,
+          `Re: ${subject}`,
+          campaign.user_id,
+          campaign.domain_name
+        ]
+      );
+
+      const draftId = draftResult.rows[0].id;
+      console.log(`💾 Draft created with ID: ${draftId}`);
+
+      // Send notification to user for manual review
+      if (notificationEmail) {
+        console.log(`📧 Sending review notification to ${notificationEmail}...`);
+        await notifyNewReply({
+          notificationEmail,
+          campaignName: campaign.campaign_name,
+          domainName: campaign.domain_name,
+          buyerEmail,
+          buyerMessage: messageContent,
+          suggestedResponse: responseText,
+          draftId
+        });
+        console.log('✅ Review notification sent!');
+      } else {
+        console.log('⚠️  No notification email configured - user won\'t be notified');
+      }
+
+      console.log('════════════════════════════════════════════════════════════\n');
+
+      return res.status(200).json({
+        success: true,
+        message: 'Draft response created for manual review',
+        campaign: campaign.campaign_name,
+        domain: campaign.domain_name,
+        mode: 'manual',
+        draftId,
+        notificationSent: !!notificationEmail,
+        requiresReview: true,
+        intent: intent
+      });
+    }
 
   } catch (error) {
     console.error('❌ Error processing inbound email:', error);
@@ -594,6 +690,304 @@ router.get('/conversations/buyer/:buyerEmail', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/inbound/drafts
+ * Get all pending draft responses (for dashboard)
+ */
+router.get('/drafts', async (req, res) => {
+  console.log('📋 Fetching pending drafts...');
+  
+  try {
+    const { userId, status } = req.query;
+    
+    let queryText = `
+      SELECT 
+        dr.*,
+        c.campaign_name
+      FROM draft_responses dr
+      JOIN campaigns c ON dr.campaign_id = c.campaign_id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    if (userId) {
+      params.push(parseInt(userId));
+      queryText += ` AND dr.user_id = $${params.length}`;
+    }
+    
+    if (status) {
+      params.push(status);
+      queryText += ` AND dr.status = $${params.length}`;
+    }
+    
+    queryText += ` ORDER BY dr.received_at DESC`;
+    
+    const result = await query(queryText, params);
+    
+    res.json({
+      success: true,
+      count: result.rows.length,
+      drafts: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching drafts:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch drafts',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/inbound/drafts/:draftId
+ * Get a specific draft response
+ */
+router.get('/drafts/:draftId', async (req, res) => {
+  console.log(`📄 Fetching draft ${req.params.draftId}...`);
+  
+  try {
+    const { draftId } = req.params;
+    
+    const result = await query(
+      `SELECT 
+        dr.*,
+        c.campaign_name
+       FROM draft_responses dr
+       JOIN campaigns c ON dr.campaign_id = c.campaign_id
+       WHERE dr.id = $1`,
+      [draftId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Draft not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      draft: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error fetching draft:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch draft',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * PUT /api/inbound/drafts/:draftId
+ * Edit a draft response before sending
+ */
+router.put('/drafts/:draftId', async (req, res) => {
+  console.log(`✏️  Editing draft ${req.params.draftId}...`);
+  
+  try {
+    const { draftId } = req.params;
+    const { editedResponse, subject } = req.body;
+    
+    if (!editedResponse) {
+      return res.status(400).json({
+        success: false,
+        error: 'Edited response is required'
+      });
+    }
+    
+    const result = await query(
+      `UPDATE draft_responses 
+       SET edited_response = $1,
+           subject = COALESCE($2, subject),
+           status = 'edited'
+       WHERE id = $3
+       RETURNING *`,
+      [editedResponse, subject, draftId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Draft not found'
+      });
+    }
+    
+    console.log(`✅ Draft updated successfully`);
+    
+    res.json({
+      success: true,
+      message: 'Draft updated successfully',
+      draft: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error updating draft:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update draft',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/inbound/drafts/:draftId/send
+ * Send a draft response (use edited version if available)
+ */
+router.post('/drafts/:draftId/send', async (req, res) => {
+  console.log(`📤 Sending draft ${req.params.draftId}...`);
+  
+  try {
+    const { draftId } = req.params;
+    
+    // Get draft details
+    const draftResult = await query(
+      `SELECT 
+        dr.*,
+        c.campaign_name,
+        c.notification_email
+       FROM draft_responses dr
+       JOIN campaigns c ON dr.campaign_id = c.campaign_id
+       WHERE dr.id = $1`,
+      [draftId]
+    );
+    
+    if (draftResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Draft not found'
+      });
+    }
+    
+    const draft = draftResult.rows[0];
+    
+    if (draft.status === 'sent') {
+      return res.status(400).json({
+        success: false,
+        error: 'This draft has already been sent'
+      });
+    }
+    
+    // Use edited response if available, otherwise use suggested response
+    const responseToSend = draft.edited_response || draft.suggested_response;
+    const subjectToSend = draft.subject;
+    
+    console.log(`   To: ${draft.buyer_email}`);
+    console.log(`   Subject: ${subjectToSend}`);
+    console.log(`   Response: ${responseToSend.substring(0, 50)}...`);
+    
+    // Send the email
+    await sendEmail({
+      to: draft.buyer_email,
+      subject: subjectToSend,
+      html: responseToSend.replace(/\n/g, '<br>'),
+      text: responseToSend,
+      tags: [`campaign-${draft.campaign_id}`, 'manual-reply', 'draft-sent']
+    });
+    
+    console.log('✅ Email sent successfully!');
+    
+    // Store in conversation history
+    await query(
+      `INSERT INTO email_conversations 
+        (campaign_id, buyer_email, buyer_name, direction, subject, message_content, received_at, user_id, domain_name, ai_generated)
+       VALUES ($1, $2, $3, 'outbound', $4, $5, NOW(), $6, $7, false)`,
+      [
+        draft.campaign_id,
+        draft.buyer_email,
+        draft.buyer_name,
+        subjectToSend,
+        responseToSend,
+        draft.user_id,
+        draft.domain_name
+      ]
+    );
+    
+    // Update draft status
+    await query(
+      `UPDATE draft_responses 
+       SET status = 'sent', sent_at = NOW()
+       WHERE id = $1`,
+      [draftId]
+    );
+    
+    console.log('💾 Stored in conversation history and marked as sent');
+    
+    // Send confirmation notification
+    if (draft.notification_email) {
+      await notifyManualSend({
+        notificationEmail: draft.notification_email,
+        campaignName: draft.campaign_name,
+        domainName: draft.domain_name,
+        buyerEmail: draft.buyer_email,
+        sentResponse: responseToSend
+      });
+      console.log('✅ Confirmation notification sent');
+    }
+    
+    res.json({
+      success: true,
+      message: 'Response sent successfully',
+      draft: {
+        ...draft,
+        status: 'sent',
+        sent_at: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Error sending draft:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send draft',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * DELETE /api/inbound/drafts/:draftId
+ * Discard a draft response
+ */
+router.delete('/drafts/:draftId', async (req, res) => {
+  console.log(`🗑️  Discarding draft ${req.params.draftId}...`);
+  
+  try {
+    const { draftId } = req.params;
+    
+    const result = await query(
+      `UPDATE draft_responses 
+       SET status = 'discarded'
+       WHERE id = $1
+       RETURNING *`,
+      [draftId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Draft not found'
+      });
+    }
+    
+    console.log('✅ Draft discarded');
+    
+    res.json({
+      success: true,
+      message: 'Draft discarded successfully'
+    });
+  } catch (error) {
+    console.error('Error discarding draft:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to discard draft',
+      message: error.message
     });
   }
 });

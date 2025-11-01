@@ -1038,4 +1038,116 @@ router.get('/:campaignId', async (req, res) => {
   }
 });
 
+/**
+ * PUT /api/campaigns/:campaignId/ai-settings
+ * Update AI agent settings for a campaign
+ */
+router.put('/:campaignId/ai-settings', async (req, res) => {
+  console.log(`⚙️  Updating AI settings for campaign ${req.params.campaignId}...`);
+  
+  try {
+    const { campaignId } = req.params;
+    const { autoResponseEnabled, notificationEmail } = req.body;
+
+    // Build dynamic UPDATE query
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (typeof autoResponseEnabled === 'boolean') {
+      updates.push(`auto_response_enabled = $${paramIndex++}`);
+      values.push(autoResponseEnabled);
+      console.log(`   Auto-response: ${autoResponseEnabled ? 'ON' : 'OFF'}`);
+    }
+
+    if (notificationEmail !== undefined) {
+      updates.push(`notification_email = $${paramIndex++}`);
+      values.push(notificationEmail || null);
+      console.log(`   Notification email: ${notificationEmail || '(none)'}`);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No settings provided',
+        message: 'Provide autoResponseEnabled (boolean) or notificationEmail (string)'
+      });
+    }
+
+    values.push(campaignId);
+    const queryText = `
+      UPDATE campaigns 
+      SET ${updates.join(', ')}
+      WHERE campaign_id = $${paramIndex}
+      RETURNING *
+    `;
+
+    const result = await query(queryText, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Campaign not found'
+      });
+    }
+
+    console.log('✅ AI settings updated successfully');
+
+    res.json({
+      success: true,
+      message: 'AI settings updated successfully',
+      campaign: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error updating AI settings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update AI settings',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/campaigns/:campaignId/ai-settings
+ * Get AI agent settings for a campaign
+ */
+router.get('/:campaignId/ai-settings', async (req, res) => {
+  console.log(`⚙️  Fetching AI settings for campaign ${req.params.campaignId}...`);
+  
+  try {
+    const { campaignId } = req.params;
+
+    const result = await query(
+      `SELECT 
+        campaign_id,
+        campaign_name,
+        auto_response_enabled,
+        notification_email
+       FROM campaigns 
+       WHERE campaign_id = $1`,
+      [campaignId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Campaign not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      settings: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error fetching AI settings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch AI settings',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;
