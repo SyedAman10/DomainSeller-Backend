@@ -65,7 +65,8 @@ async function notifyNewReply({
   buyerMessage,
   suggestedResponse,
   draftId,
-  dashboardUrl = 'https://3vltn.com/dashboard'
+  campaignId,
+  dashboardUrl = 'https://3vltn.com'
 }) {
   const subject = `🔔 New Reply Received: ${domainName}`;
   
@@ -114,10 +115,10 @@ async function notifyNewReply({
       </div>
       
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${dashboardUrl}/drafts/${draftId}" class="button">
+        <a href="${dashboardUrl}/dashboard?draftId=${draftId}" class="button">
           ✏️ Review & Edit Response
         </a>
-        <a href="${dashboardUrl}/drafts/${draftId}/send" class="button" style="background: #4CAF50;">
+        <a href="${dashboardUrl}/dashboard?draftId=${draftId}&action=send" class="button" style="background: #4CAF50;">
           ✅ Send As-Is
         </a>
       </div>
@@ -153,7 +154,8 @@ async function notifyAutoResponse({
   buyerEmail, 
   buyerMessage,
   aiResponse,
-  dashboardUrl = 'https://3vltn.com/dashboard'
+  campaignId,
+  dashboardUrl = 'https://3vltn.com'
 }) {
   const subject = `✅ Auto-Reply Sent: ${domainName}`;
   
@@ -201,7 +203,7 @@ async function notifyAutoResponse({
       </div>
       
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${dashboardUrl}/conversations" class="button">
+        <a href="${dashboardUrl}/dashboard?campaignId=${campaignId}&view=conversations" class="button">
           💬 View Full Conversation
         </a>
       </div>

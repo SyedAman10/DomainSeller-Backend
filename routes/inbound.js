@@ -222,7 +222,8 @@ router.post('/mailgun', async (req, res) => {
           domainName: campaign.domain_name,
           buyerEmail,
           buyerMessage: messageContent,
-          aiResponse: responseText
+          aiResponse: responseText,
+          campaignId: campaign.campaign_id
         });
         console.log('✅ Notification sent!');
       }
@@ -278,7 +279,8 @@ router.post('/mailgun', async (req, res) => {
           buyerEmail,
           buyerMessage: messageContent,
           suggestedResponse: responseText,
-          draftId
+          draftId,
+          campaignId: campaign.campaign_id
         });
         console.log('✅ Review notification sent!');
       } else {
