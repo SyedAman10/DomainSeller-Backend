@@ -54,7 +54,14 @@ router.post('/mailgun', async (req, res) => {
         c.user_id,
         c.created_at,
         c.auto_response_enabled,
-        c.notification_email
+        c.notification_email,
+        c.asking_price,
+        c.minimum_price,
+        c.negotiation_strategy,
+        c.response_style,
+        c.response_length,
+        c.custom_instructions,
+        c.highlight_features
        FROM campaigns c
        LEFT JOIN sent_emails se ON se.campaign_id = c.campaign_id
        LEFT JOIN scheduled_emails sch ON sch.campaign_id = c.campaign_id
@@ -162,7 +169,14 @@ router.post('/mailgun', async (req, res) => {
       buyerName: buyerName,
       conversationHistory: conversationHistory,
       campaignInfo: {
-        emailTone: campaign.email_tone
+        emailTone: campaign.email_tone,
+        askingPrice: campaign.asking_price,
+        minimumPrice: campaign.minimum_price,
+        negotiationStrategy: campaign.negotiation_strategy,
+        responseStyle: campaign.response_style,
+        responseLength: campaign.response_length,
+        customInstructions: campaign.custom_instructions,
+        highlightFeatures: campaign.highlight_features
       }
     });
 

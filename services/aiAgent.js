@@ -28,39 +28,110 @@ const generateAIResponse = async (context) => {
       throw new Error('OPENAI_API_KEY not configured in environment variables');
     }
 
+    // Extract customization settings
+    const {
+      askingPrice,
+      minimumPrice,
+      negotiationStrategy = 'flexible',
+      responseStyle = 'professional',
+      responseLength = 'medium',
+      customInstructions = '',
+      highlightFeatures = ''
+    } = campaignInfo;
+
+    // Build pricing guidance
+    let pricingGuidance = '';
+    if (askingPrice && minimumPrice) {
+      pricingGuidance = `
+PRICING STRATEGY:
+- Asking Price: $${askingPrice}
+- Minimum Acceptable: $${minimumPrice}
+- Negotiation Approach: ${negotiationStrategy}
+
+${negotiationStrategy === 'firm' ? 
+  '- Stay firm on the asking price, justify the value' : 
+  negotiationStrategy === 'flexible' ?
+  '- Open to reasonable offers between minimum and asking price' :
+  '- Very flexible, willing to negotiate closer to minimum price'}
+
+- If they mention price concerns, present the value proposition
+- If they make an offer below minimum, counter with asking price
+- If they offer between minimum and asking, negotiate strategically
+`;
+    } else if (askingPrice) {
+      pricingGuidance = `
+PRICING INFO:
+- Domain asking price: $${askingPrice}
+- Emphasize value at this price point
+`;
+    }
+
+    // Build style guidance
+    const styleInstructions = {
+      professional: 'Maintain professional tone, formal language, business-focused',
+      casual: 'Use conversational tone, friendly language, relatable examples',
+      friendly: 'Warm and approachable, build rapport, personable communication',
+      direct: 'Get straight to the point, concise, no fluff, clear statements',
+      persuasive: 'Strong call-to-actions, emphasize benefits, create urgency'
+    };
+
+    const lengthInstructions = {
+      short: '1-2 paragraphs maximum, very concise, bullet points where appropriate',
+      medium: '2-4 paragraphs, balanced detail, clear structure',
+      long: '4-6 paragraphs, detailed explanations, comprehensive information'
+    };
+
+    // Build features section
+    let featuresSection = '';
+    if (highlightFeatures) {
+      featuresSection = `
+KEY DOMAIN FEATURES TO EMPHASIZE:
+${highlightFeatures}
+`;
+    }
+
     // Build conversation context
     const messages = [
       {
         role: 'system',
-        content: `You are an expert domain sales agent. Your goal is to convince buyers to purchase the domain "${domainName}".
+        content: `You are an expert domain sales agent selling the domain "${domainName}".
 
-PERSONALITY:
-- Professional yet personable
-- Persuasive without being pushy
-- Knowledgeable about domain values
-- Quick to respond to objections
-- Always highlight domain benefits
+COMMUNICATION STYLE: ${responseStyle.toUpperCase()}
+${styleInstructions[responseStyle]}
+
+RESPONSE LENGTH: ${responseLength.toUpperCase()}
+${lengthInstructions[responseLength]}
+
+${pricingGuidance}
+
+${featuresSection}
+
+CORE SELLING POINTS (if not mentioned above):
+- SEO Benefits: Premium domains rank better
+- Brand Value: Memorable, professional, credible
+- Investment: Domains appreciate over time
+- Instant Authority: Established domain = instant credibility
+- Marketing Advantage: Easier to remember and share
 
 SALES STRATEGY:
-1. Address their concerns directly
-2. Emphasize domain value (SEO, branding, memorability)
-3. Create urgency (other interested parties, limited availability)
-4. Overcome price objections with value justification
-5. Offer flexible payment terms if price is mentioned
-6. Always end with a call to action
+1. Address their concerns/questions directly
+2. ${responseStyle === 'direct' ? 'State benefits clearly and move to action' : 'Build rapport and explain value proposition'}
+3. ${negotiationStrategy === 'firm' ? 'Justify the asking price with concrete value' : 'Show flexibility while maintaining value perception'}
+4. Create ${responseStyle === 'persuasive' ? 'strong urgency' : 'gentle urgency'} (mention other inquiries if appropriate)
+5. ${responseLength === 'short' ? 'Quick call-to-action' : 'Detailed call-to-action with next steps'}
 
-TONE: ${campaignInfo.emailTone || 'professional'}
+${customInstructions ? `CUSTOM INSTRUCTIONS:\n${customInstructions}` : ''}
 
 RULES:
-- Keep responses concise (2-4 paragraphs max)
-- Be authentic and genuine
-- Never be desperate
-- Don't make false claims
-- Match the buyer's communication style
-- Use the buyer's name naturally
-- Sign off as the domain seller
+- Use buyer's name: ${buyerName}
+- ${responseLength === 'short' ? 'Be extremely concise' : responseLength === 'long' ? 'Provide comprehensive details' : 'Balance detail with brevity'}
+- ${responseStyle === 'direct' ? 'No unnecessary pleasantries' : 'Be personable and warm'}
+- Never make false claims about the domain
+- ${negotiationStrategy === 'firm' ? 'Stand firm on price' : 'Be open to negotiation'}
+- Match the buyer's communication energy
+- Always end with clear next steps
 
-Remember: You're selling a premium digital asset that can transform their business.`
+Remember: You're selling a premium digital asset that provides real business value.`
       }
     ];
 
@@ -75,18 +146,28 @@ Remember: You're selling a premium digital asset that can transform their busine
     // Add current buyer message
     messages.push({
       role: 'user',
-      content: `Buyer's latest message:\n\n${buyerMessage}\n\nGenerate a persuasive response to convince them to buy ${domainName}.`
+      content: `Buyer's latest message:\n\n${buyerMessage}\n\nGenerate a ${responseStyle} response that is ${responseLength} in length to convince them to buy ${domainName}.`
     });
 
     console.log('🚀 Calling OpenAI API...');
+    console.log(`   Style: ${responseStyle}, Length: ${responseLength}`);
+    if (askingPrice) console.log(`   Asking Price: $${askingPrice}`);
+    if (minimumPrice) console.log(`   Min Price: $${minimumPrice}`);
+
+    // Adjust max_tokens based on response length
+    const maxTokens = {
+      short: 250,
+      medium: 500,
+      long: 800
+    }[responseLength];
 
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
         model: AI_MODEL,
         messages: messages,
-        temperature: 0.7,
-        max_tokens: 500,
+        temperature: responseStyle === 'direct' ? 0.5 : 0.7,
+        max_tokens: maxTokens,
         presence_penalty: 0.6,
         frequency_penalty: 0.3
       },

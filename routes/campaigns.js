@@ -1047,7 +1047,17 @@ router.put('/:campaignId/ai-settings', async (req, res) => {
   
   try {
     const { campaignId } = req.params;
-    const { autoResponseEnabled, notificationEmail } = req.body;
+    const { 
+      autoResponseEnabled, 
+      notificationEmail,
+      askingPrice,
+      minimumPrice,
+      negotiationStrategy,
+      responseStyle,
+      responseLength,
+      customInstructions,
+      highlightFeatures
+    } = req.body;
 
     // Build dynamic UPDATE query
     const updates = [];
@@ -1066,11 +1076,53 @@ router.put('/:campaignId/ai-settings', async (req, res) => {
       console.log(`   Notification email: ${notificationEmail || '(none)'}`);
     }
 
+    if (askingPrice !== undefined) {
+      updates.push(`asking_price = $${paramIndex++}`);
+      values.push(askingPrice || null);
+      console.log(`   Asking price: $${askingPrice || 'not set'}`);
+    }
+
+    if (minimumPrice !== undefined) {
+      updates.push(`minimum_price = $${paramIndex++}`);
+      values.push(minimumPrice || null);
+      console.log(`   Minimum price: $${minimumPrice || 'not set'}`);
+    }
+
+    if (negotiationStrategy) {
+      updates.push(`negotiation_strategy = $${paramIndex++}`);
+      values.push(negotiationStrategy);
+      console.log(`   Negotiation: ${negotiationStrategy}`);
+    }
+
+    if (responseStyle) {
+      updates.push(`response_style = $${paramIndex++}`);
+      values.push(responseStyle);
+      console.log(`   Response style: ${responseStyle}`);
+    }
+
+    if (responseLength) {
+      updates.push(`response_length = $${paramIndex++}`);
+      values.push(responseLength);
+      console.log(`   Response length: ${responseLength}`);
+    }
+
+    if (customInstructions !== undefined) {
+      updates.push(`custom_instructions = $${paramIndex++}`);
+      values.push(customInstructions || null);
+      console.log(`   Custom instructions: ${customInstructions ? 'set' : 'none'}`);
+    }
+
+    if (highlightFeatures !== undefined) {
+      updates.push(`highlight_features = $${paramIndex++}`);
+      values.push(highlightFeatures || null);
+      console.log(`   Highlight features: ${highlightFeatures ? 'set' : 'none'}`);
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'No settings provided',
-        message: 'Provide autoResponseEnabled (boolean) or notificationEmail (string)'
+        message: 'Provide at least one AI setting to update'
       });
     }
 
@@ -1123,7 +1175,14 @@ router.get('/:campaignId/ai-settings', async (req, res) => {
         campaign_id,
         campaign_name,
         auto_response_enabled,
-        notification_email
+        notification_email,
+        asking_price,
+        minimum_price,
+        negotiation_strategy,
+        response_style,
+        response_length,
+        custom_instructions,
+        highlight_features
        FROM campaigns 
        WHERE campaign_id = $1`,
       [campaignId]
