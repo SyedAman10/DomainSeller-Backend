@@ -42,10 +42,15 @@ const sendEmail = async (emailData) => {
       console.warn('⚠️  Add recipient at: https://app.mailgun.com/app/sending/domains');
     }
 
+    // Set Reply-To to sandbox domain for AI agent to receive replies
+    const replyToEmail = `noreply@${MAILGUN_DOMAIN}`;
+    console.log(`📧 Reply-To set to: ${replyToEmail}`);
+
     const form = new FormData();
     form.append('from', MAILGUN_FROM_EMAIL);
     form.append('to', to);
     form.append('subject', subject);
+    form.append('h:Reply-To', replyToEmail); // ← AI agent will receive replies here!
     
     if (html) {
       form.append('html', html);
