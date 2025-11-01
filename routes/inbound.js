@@ -90,6 +90,28 @@ router.post('/mailgun', async (req, res) => {
 
     console.log('💾 Stored inbound message in database');
 
+    // 🛑 FREEZE ALL SCHEDULED EMAILS FOR THIS BUYER
+    console.log('🛑 Buyer replied - freezing all scheduled emails...');
+    
+    const frozenResult = await query(
+      `UPDATE scheduled_emails 
+       SET status = 'paused' 
+       WHERE campaign_id = $1 
+         AND buyer_email = $2 
+         AND status = 'pending'
+       RETURNING id, email_subject, scheduled_for`,
+      [campaign.campaign_id, buyerEmail]
+    );
+
+    if (frozenResult.rows.length > 0) {
+      console.log(`   ❄️  Paused ${frozenResult.rows.length} scheduled email(s)`);
+      frozenResult.rows.forEach(email => {
+        console.log(`      - "${email.email_subject}" (was scheduled for ${email.scheduled_for})`);
+      });
+    } else {
+      console.log('   ℹ️  No scheduled emails to pause');
+    }
+
     // Analyze buyer intent
     const intent = analyzeBuyerIntent(messageContent);
     console.log('🔍 Buyer Intent Analysis:');
@@ -361,6 +383,151 @@ function getTimeAgo(timestamp) {
   if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`;
   return then.toLocaleDateString();
 }
+
+/**
+ * GET /api/inbound/paused/:campaignId
+ * Get all paused emails for a campaign
+ */
+router.get('/paused/:campaignId', async (req, res) => {
+  console.log('⏸️  Fetching paused emails...');
+  
+  try {
+    const { campaignId } = req.params;
+
+    const campaign = await query(
+      'SELECT * FROM campaigns WHERE campaign_id = $1 OR id = $2',
+      [campaignId, parseInt(campaignId) || 0]
+    );
+
+    if (campaign.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Campaign not found'
+      });
+    }
+
+    const actualCampaignId = campaign.rows[0].campaign_id;
+
+    const pausedEmails = await query(
+      `SELECT * FROM scheduled_emails 
+       WHERE campaign_id = $1 AND status = 'paused'
+       ORDER BY scheduled_for ASC`,
+      [actualCampaignId]
+    );
+
+    res.json({
+      success: true,
+      campaign: {
+        id: campaign.rows[0].id,
+        campaign_id: campaign.rows[0].campaign_id,
+        campaign_name: campaign.rows[0].campaign_name
+      },
+      pausedEmails: pausedEmails.rows,
+      count: pausedEmails.rows.length
+    });
+  } catch (error) {
+    console.error('Error fetching paused emails:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch paused emails',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/inbound/resume/:emailId
+ * Resume a paused email (change status back to pending)
+ */
+router.post('/resume/:emailId', async (req, res) => {
+  console.log('▶️  Resuming paused email...');
+  
+  try {
+    const { emailId } = req.params;
+
+    const result = await query(
+      `UPDATE scheduled_emails 
+       SET status = 'pending' 
+       WHERE id = $1 AND status = 'paused'
+       RETURNING *`,
+      [emailId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Paused email not found'
+      });
+    }
+
+    console.log(`✅ Email resumed: "${result.rows[0].email_subject}"`);
+
+    res.json({
+      success: true,
+      message: 'Email resumed successfully',
+      email: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error resuming email:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to resume email',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/inbound/resume-all/:campaignId/:buyerEmail
+ * Resume all paused emails for a specific buyer
+ */
+router.post('/resume-all/:campaignId/:buyerEmail', async (req, res) => {
+  console.log('▶️  Resuming all paused emails for buyer...');
+  
+  try {
+    const { campaignId, buyerEmail } = req.params;
+
+    const campaign = await query(
+      'SELECT * FROM campaigns WHERE campaign_id = $1 OR id = $2',
+      [campaignId, parseInt(campaignId) || 0]
+    );
+
+    if (campaign.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Campaign not found'
+      });
+    }
+
+    const actualCampaignId = campaign.rows[0].campaign_id;
+
+    const result = await query(
+      `UPDATE scheduled_emails 
+       SET status = 'pending' 
+       WHERE campaign_id = $1 
+         AND buyer_email = $2 
+         AND status = 'paused'
+       RETURNING *`,
+      [actualCampaignId, buyerEmail]
+    );
+
+    console.log(`✅ Resumed ${result.rows.length} email(s) for ${buyerEmail}`);
+
+    res.json({
+      success: true,
+      message: `Resumed ${result.rows.length} email(s)`,
+      resumedCount: result.rows.length,
+      emails: result.rows
+    });
+  } catch (error) {
+    console.error('Error resuming emails:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to resume emails',
+      message: error.message
+    });
+  }
+});
 
 /**
  * GET /api/inbound/conversations/:campaignId
