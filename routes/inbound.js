@@ -55,7 +55,6 @@ router.post('/mailgun', async (req, res) => {
         c.created_at,
         c.auto_response_enabled,
         c.notification_email,
-        c.asking_price,
         c.minimum_price,
         c.negotiation_strategy,
         c.response_style,
@@ -170,7 +169,6 @@ router.post('/mailgun', async (req, res) => {
       conversationHistory: conversationHistory,
       campaignInfo: {
         emailTone: campaign.email_tone,
-        askingPrice: campaign.asking_price,
         minimumPrice: campaign.minimum_price,
         negotiationStrategy: campaign.negotiation_strategy,
         responseStyle: campaign.response_style,

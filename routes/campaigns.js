@@ -1050,7 +1050,6 @@ router.put('/:campaignId/ai-settings', async (req, res) => {
     const { 
       autoResponseEnabled, 
       notificationEmail,
-      askingPrice,
       minimumPrice,
       negotiationStrategy,
       responseStyle,
@@ -1074,12 +1073,6 @@ router.put('/:campaignId/ai-settings', async (req, res) => {
       updates.push(`notification_email = $${paramIndex++}`);
       values.push(notificationEmail || null);
       console.log(`   Notification email: ${notificationEmail || '(none)'}`);
-    }
-
-    if (askingPrice !== undefined) {
-      updates.push(`asking_price = $${paramIndex++}`);
-      values.push(askingPrice || null);
-      console.log(`   Asking price: $${askingPrice || 'not set'}`);
     }
 
     if (minimumPrice !== undefined) {
@@ -1176,7 +1169,6 @@ router.get('/:campaignId/ai-settings', async (req, res) => {
         campaign_name,
         auto_response_enabled,
         notification_email,
-        asking_price,
         minimum_price,
         negotiation_strategy,
         response_style,

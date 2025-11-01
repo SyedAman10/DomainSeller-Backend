@@ -30,7 +30,7 @@ const generateAIResponse = async (context) => {
 
     // Extract customization settings
     const {
-      askingPrice,
+      askingPrice,  // This can be passed from email content or domain data
       minimumPrice,
       negotiationStrategy = 'flexible',
       responseStyle = 'professional',
@@ -41,28 +41,34 @@ const generateAIResponse = async (context) => {
 
     // Build pricing guidance
     let pricingGuidance = '';
-    if (askingPrice && minimumPrice) {
+    if (minimumPrice) {
       pricingGuidance = `
 PRICING STRATEGY:
-- Asking Price: $${askingPrice}
+${askingPrice ? `- Asking Price: $${askingPrice}` : '- Asking price is mentioned in the original email to buyer'}
 - Minimum Acceptable: $${minimumPrice}
 - Negotiation Approach: ${negotiationStrategy}
 
 ${negotiationStrategy === 'firm' ? 
   '- Stay firm on the asking price, justify the value' : 
   negotiationStrategy === 'flexible' ?
-  '- Open to reasonable offers between minimum and asking price' :
+  '- Open to reasonable offers above minimum price' :
   '- Very flexible, willing to negotiate closer to minimum price'}
 
 - If they mention price concerns, present the value proposition
-- If they make an offer below minimum, counter with asking price
-- If they offer between minimum and asking, negotiate strategically
+- If they make an offer below minimum ($${minimumPrice}), politely decline or counter
+- If they offer above minimum, negotiate strategically
 `;
     } else if (askingPrice) {
       pricingGuidance = `
 PRICING INFO:
 - Domain asking price: $${askingPrice}
 - Emphasize value at this price point
+`;
+    } else {
+      pricingGuidance = `
+PRICING INFO:
+- Refer to the price mentioned in the original email if buyer asks
+- Focus on value, benefits, and ROI rather than just price
 `;
     }
 
