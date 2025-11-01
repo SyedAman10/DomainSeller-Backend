@@ -1,12 +1,8 @@
+const axios = require('axios');
 const FormData = require('form-data');
-const Mailgun = require('mailgun.js');
+require('dotenv').config();
 
-const mailgun = new Mailgun(FormData);
-const mg = mailgun.client({
-  username: 'api',
-  key: process.env.MAILGUN_API_KEY
-});
-
+const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY;
 const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN;
 const MAILGUN_FROM_EMAIL = process.env.MAILGUN_FROM_EMAIL || `noreply@${MAILGUN_DOMAIN}`;
 
@@ -23,22 +19,31 @@ async function sendNotification({
     console.log(`📧 Sending notification to: ${to}`);
     console.log(`   Subject: ${subject}`);
 
-    const messageData = {
-      from: MAILGUN_FROM_EMAIL,
-      to: to,
-      subject: subject,
-      html: htmlContent,
-      text: textContent || htmlContent.replace(/<[^>]*>/g, '')
-    };
+    const form = new FormData();
+    form.append('from', MAILGUN_FROM_EMAIL);
+    form.append('to', to);
+    form.append('subject', subject);
+    form.append('html', htmlContent);
+    form.append('text', textContent || htmlContent.replace(/<[^>]*>/g, ''));
 
-    const response = await mg.messages.create(MAILGUN_DOMAIN, messageData);
+    const response = await axios.post(
+      `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`,
+      form,
+      {
+        auth: {
+          username: 'api',
+          password: MAILGUN_API_KEY
+        },
+        headers: form.getHeaders()
+      }
+    );
     
     console.log(`✅ Notification sent successfully!`);
-    console.log(`   Message ID: ${response.id}`);
+    console.log(`   Message ID: ${response.data.id}`);
     
     return {
       success: true,
-      messageId: response.id
+      messageId: response.data.id
     };
   } catch (error) {
     console.error('❌ Failed to send notification:', error.message);
