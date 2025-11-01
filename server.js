@@ -16,20 +16,26 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-// Parse allowed origins from environment variable
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
-  : ['http://localhost:3000'];
+// HARDCODED allowed origins - no env issues!
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://3vltn.com',
+  'http://3vltn.com'
+];
+
+console.log('🌐 CORS Allowed Origins:', allowedOrigins);
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.warn(`⚠️  CORS blocked origin: ${origin}`);
+      console.warn(`   Allowed: ${allowedOrigins.join(', ')}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
