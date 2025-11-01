@@ -44,31 +44,40 @@ const generateAIResponse = async (context) => {
     if (minimumPrice) {
       pricingGuidance = `
 PRICING STRATEGY:
-${askingPrice ? `- Asking Price: $${askingPrice}` : '- Asking price is mentioned in the original email to buyer'}
+- **NEVER voluntarily mention the asking price in your response**
+- Only discuss price if the buyer specifically asks "What's the price?" or "How much?"
 - Minimum Acceptable: $${minimumPrice}
 - Negotiation Approach: ${negotiationStrategy}
 
 ${negotiationStrategy === 'firm' ? 
-  '- Stay firm on the asking price, justify the value' : 
+  '- If they ask about price, justify the value before mentioning any numbers' : 
   negotiationStrategy === 'flexible' ?
-  '- Open to reasonable offers above minimum price' :
-  '- Very flexible, willing to negotiate closer to minimum price'}
+  '- If they ask about price, show openness to reasonable offers above $${minimumPrice}' :
+  '- If they ask about price, be flexible and willing to work within their budget (above $${minimumPrice})'}
 
-- If they mention price concerns, present the value proposition
-- If they make an offer below minimum ($${minimumPrice}), politely decline or counter
-- If they offer above minimum, negotiate strategically
+PRICE DISCUSSION RULES:
+- NEVER say "The asking price is..." unless they specifically asked
+- If they don't mention price, focus on value, benefits, and asking if they're interested
+- If they mention budget concerns, ask what they're comfortable with
+- If they make an offer below $${minimumPrice}, politely counter: "I appreciate your offer, but the minimum I can accept is $${minimumPrice} given the domain's value"
+- If they make an offer above $${minimumPrice}, negotiate strategically
+- Always emphasize VALUE over price
 `;
     } else if (askingPrice) {
       pricingGuidance = `
 PRICING INFO:
-- Domain asking price: $${askingPrice}
-- Emphasize value at this price point
+- **NEVER voluntarily mention the asking price unless buyer specifically asks**
+- If they ask "What's the price?", then you can mention: $${askingPrice}
+- Focus on value, benefits, and ROI rather than leading with price
+- Let them express interest first, then discuss pricing
 `;
     } else {
       pricingGuidance = `
 PRICING INFO:
-- Refer to the price mentioned in the original email if buyer asks
-- Focus on value, benefits, and ROI rather than just price
+- **NEVER volunteer pricing information**
+- If buyer asks about price, refer to "competitive market pricing" and ask their budget
+- Focus on value, benefits, and ROI rather than price
+- Build interest first, pricing comes later
 `;
     }
 
@@ -122,22 +131,24 @@ CORE SELLING POINTS (if not mentioned above):
 SALES STRATEGY:
 1. Address their concerns/questions directly
 2. ${responseStyle === 'direct' ? 'State benefits clearly and move to action' : 'Build rapport and explain value proposition'}
-3. ${negotiationStrategy === 'firm' ? 'Justify the asking price with concrete value' : 'Show flexibility while maintaining value perception'}
+3. **DO NOT mention price unless they specifically ask** - focus on value first
 4. Create ${responseStyle === 'persuasive' ? 'strong urgency' : 'gentle urgency'} (mention other inquiries if appropriate)
 5. ${responseLength === 'short' ? 'Quick call-to-action' : 'Detailed call-to-action with next steps'}
+6. If they ask about budget, ask what they're comfortable with first
 
 ${customInstructions ? `CUSTOM INSTRUCTIONS:\n${customInstructions}` : ''}
 
-RULES:
+CRITICAL RULES:
 - Use buyer's name: ${buyerName}
+- **NEVER say "The asking price is..." or "The price is..." unless they explicitly asked**
+- If they didn't ask about price, focus on interest, value, and benefits
 - ${responseLength === 'short' ? 'Be extremely concise' : responseLength === 'long' ? 'Provide comprehensive details' : 'Balance detail with brevity'}
 - ${responseStyle === 'direct' ? 'No unnecessary pleasantries' : 'Be personable and warm'}
 - Never make false claims about the domain
-- ${negotiationStrategy === 'firm' ? 'Stand firm on price' : 'Be open to negotiation'}
 - Match the buyer's communication energy
-- Always end with clear next steps
+- Always end with clear next steps or questions to keep conversation going
 
-Remember: You're selling a premium digital asset that provides real business value.`
+Remember: Build interest and value FIRST. Price discussion comes ONLY when they ask or show strong interest.`
       }
     ];
 
