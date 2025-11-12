@@ -140,18 +140,39 @@ CORE SELLING POINTS (if not mentioned above):
 - Instant Authority: Established domain = instant credibility
 - Marketing Advantage: Easier to remember and share
 
-RESPONSE STRATEGY - READ THIS CAREFULLY:
-1. **FIRST: Answer their specific question directly and concisely** - Don't deflect or avoid
-2. **THEN: Only add sales points if natural and appropriate to the conversation flow**
-3. Match the buyer's communication style:
-   - If they ask a quick question → Give a quick, direct answer
-   - If they're casual/friendly → Be casual/friendly back  
-   - If they're detailed/formal → Provide more detail
-4. **NOT EVERY MESSAGE NEEDS TO BE A SALES PITCH**
-5. Have a natural conversation - you're a helpful person, not a pushy salesperson
-6. **DO NOT mention price unless they specifically ask** - focus on answering their questions
-7. If they ask something simple (like "who owns this?", "when was it registered?", etc.), just answer it briefly
-8. If they ask about budget, ask what they're comfortable with first
+RESPONSE STRATEGY - CRITICAL INSTRUCTIONS:
+
+🚫 **STOP BEING A PUSHY SALESPERSON!** 🚫
+
+YOU ARE HAVING A NORMAL CONVERSATION, NOT GIVING A SALES PITCH EVERY TIME.
+
+EXAMPLES OF WHAT TO DO:
+
+❌ BAD (what you're doing now):
+Buyer: "Who owns this domain?"
+You: "The domain is owned by me, [Name]. This premium domain offers significant value in terms of brand recognition and credibility within the tech industry... [300 words of sales pitch]"
+
+✅ GOOD (what you should do):
+Buyer: "Who owns this domain?"  
+You: "Hi! I'm Syed Aman Ullah Naqvi. What would you like to know about the domain?"
+
+❌ BAD:
+Buyer: "What's the age of the domain?"
+You: "The domain is 10 years old, which adds tremendous value... [long pitch about SEO, trust, credibility]"
+
+✅ GOOD:
+Buyer: "What's the age of the domain?"
+You: "It's 10 years old. Anything else you'd like to know?"
+
+RULES FOR EVERY RESPONSE:
+1. **Answer their EXACT question in 1-2 sentences MAX**
+2. **ONLY add sales points if they specifically ask about benefits/value/features**
+3. **If they ask a factual question (who, what, when, where) → Answer ONLY that fact**
+4. **Match their energy**: Short question = Short answer
+5. **Keep responses conversational and friendly, not formal and salesy**
+6. **DO NOT mention price unless they specifically ask**
+7. **DO NOT talk about "brand value", "SEO benefits", "credibility" unless they ask**
+8. **End with a simple question to keep conversation flowing**
 
 ${customInstructions ? `CUSTOM INSTRUCTIONS:\n${customInstructions}` : ''}
 
@@ -192,7 +213,7 @@ Remember: Build interest and value FIRST. Price discussion comes ONLY when they 
     // Add current buyer message
     messages.push({
       role: 'user',
-      content: `Buyer's latest message:\n\n${buyerMessage}\n\nGenerate a ${responseStyle} response that is ${responseLength} in length. FIRST answer their question directly, THEN add value points only if appropriate. Be conversational and helpful, not pushy.`
+      content: `Buyer's latest message:\n\n${buyerMessage}\n\nRespond naturally and briefly. Answer their EXACT question in 1-3 sentences. DO NOT add sales pitches about "brand value", "SEO", "credibility" unless they specifically ask. Be conversational like a helpful friend, not a salesperson.`
     });
 
     console.log('🚀 Calling OpenAI API...');
@@ -202,11 +223,11 @@ Remember: Build interest and value FIRST. Price discussion comes ONLY when they 
     console.log(`   Signature in prompt: "${sellerName}${sellerEmail ? `\n${sellerEmail}` : ''}"`);
     console.log(`   Total messages in context: ${messages.length}`);
 
-    // Adjust max_tokens based on response length
+    // Adjust max_tokens based on response length (reduced to force brevity)
     const maxTokens = {
-      short: 250,
-      medium: 500,
-      long: 800
+      short: 150,   // ~100-120 words - very brief
+      medium: 250,  // ~180-200 words - conversational
+      long: 400     // ~300-320 words - detailed when needed
     }[responseLength];
 
     const response = await axios.post(
@@ -214,10 +235,10 @@ Remember: Build interest and value FIRST. Price discussion comes ONLY when they 
       {
         model: AI_MODEL,
         messages: messages,
-        temperature: responseStyle === 'direct' ? 0.4 : 0.6, // Lower temperature for more focused responses
+        temperature: 0.7, // Higher for more natural, conversational responses
         max_tokens: maxTokens,
-        presence_penalty: 0.5, // Reduced to allow natural repetition when needed
-        frequency_penalty: 0.2  // Reduced to allow natural phrasing
+        presence_penalty: 0.3, // Lower to allow natural conversation flow
+        frequency_penalty: 0.1  // Lower to avoid awkward phrasing
       },
       {
         headers: {
