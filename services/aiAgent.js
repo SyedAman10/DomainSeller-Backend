@@ -140,13 +140,18 @@ CORE SELLING POINTS (if not mentioned above):
 - Instant Authority: Established domain = instant credibility
 - Marketing Advantage: Easier to remember and share
 
-SALES STRATEGY:
-1. Address their concerns/questions directly
-2. ${responseStyle === 'direct' ? 'State benefits clearly and move to action' : 'Build rapport and explain value proposition'}
-3. **DO NOT mention price unless they specifically ask** - focus on value first
-4. Create ${responseStyle === 'persuasive' ? 'strong urgency' : 'gentle urgency'} (mention other inquiries if appropriate)
-5. ${responseLength === 'short' ? 'Quick call-to-action' : 'Detailed call-to-action with next steps'}
-6. If they ask about budget, ask what they're comfortable with first
+RESPONSE STRATEGY - READ THIS CAREFULLY:
+1. **FIRST: Answer their specific question directly and concisely** - Don't deflect or avoid
+2. **THEN: Only add sales points if natural and appropriate to the conversation flow**
+3. Match the buyer's communication style:
+   - If they ask a quick question → Give a quick, direct answer
+   - If they're casual/friendly → Be casual/friendly back  
+   - If they're detailed/formal → Provide more detail
+4. **NOT EVERY MESSAGE NEEDS TO BE A SALES PITCH**
+5. Have a natural conversation - you're a helpful person, not a pushy salesperson
+6. **DO NOT mention price unless they specifically ask** - focus on answering their questions
+7. If they ask something simple (like "who owns this?", "when was it registered?", etc.), just answer it briefly
+8. If they ask about budget, ask what they're comfortable with first
 
 ${customInstructions ? `CUSTOM INSTRUCTIONS:\n${customInstructions}` : ''}
 
@@ -187,7 +192,7 @@ Remember: Build interest and value FIRST. Price discussion comes ONLY when they 
     // Add current buyer message
     messages.push({
       role: 'user',
-      content: `Buyer's latest message:\n\n${buyerMessage}\n\nGenerate a ${responseStyle} response that is ${responseLength} in length to convince them to buy ${domainName}.`
+      content: `Buyer's latest message:\n\n${buyerMessage}\n\nGenerate a ${responseStyle} response that is ${responseLength} in length. FIRST answer their question directly, THEN add value points only if appropriate. Be conversational and helpful, not pushy.`
     });
 
     console.log('🚀 Calling OpenAI API...');
@@ -209,10 +214,10 @@ Remember: Build interest and value FIRST. Price discussion comes ONLY when they 
       {
         model: AI_MODEL,
         messages: messages,
-        temperature: responseStyle === 'direct' ? 0.5 : 0.7,
+        temperature: responseStyle === 'direct' ? 0.4 : 0.6, // Lower temperature for more focused responses
         max_tokens: maxTokens,
-        presence_penalty: 0.6,
-        frequency_penalty: 0.3
+        presence_penalty: 0.5, // Reduced to allow natural repetition when needed
+        frequency_penalty: 0.2  // Reduced to allow natural phrasing
       },
       {
         headers: {
