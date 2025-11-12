@@ -23,8 +23,17 @@ const generateAIResponse = async (context) => {
   console.log('🤖 AI AGENT - Generating Response');
   console.log(`   Domain: ${domainName}`);
   console.log(`   Buyer: ${buyerName}`);
-  console.log(`   Seller: ${sellerName} (${sellerEmail})`);
+  console.log(`   Seller Name: "${sellerName}" (type: ${typeof sellerName}, length: ${sellerName?.length || 0})`);
+  console.log(`   Seller Email: "${sellerEmail}" (type: ${typeof sellerEmail}, length: ${sellerEmail?.length || 0})`);
   console.log(`   Message Length: ${buyerMessage.length} characters`);
+  
+  // Validate seller info
+  if (!sellerName || sellerName === 'Domain Seller' || sellerName.includes('[Your Name]')) {
+    console.warn(`⚠️  WARNING: Seller name is placeholder or missing! Value: "${sellerName}"`);
+  }
+  if (!sellerEmail || sellerEmail.length === 0) {
+    console.warn(`⚠️  WARNING: Seller email is empty!`);
+  }
 
   try {
     if (!OPENAI_API_KEY) {
@@ -151,12 +160,17 @@ CRITICAL RULES:
 - Match the buyer's communication energy
 - Always end with clear next steps or questions to keep conversation going
 
-EMAIL SIGNATURE:
-- ALWAYS end your email with this signature (no placeholders!):
-  "Best regards,
-  ${sellerName}${sellerEmail ? `\n${sellerEmail}` : ''}"
-- DO NOT use placeholders like [Your Name] or [Your Contact Information]
-- Use the exact name and email provided above
+EMAIL SIGNATURE - CRITICAL:
+- You MUST end EVERY email with this EXACT signature (copy it exactly as shown):
+  
+  Best regards,
+  ${sellerName}${sellerEmail ? `\n${sellerEmail}` : ''}
+
+- NEVER use placeholders like [Your Name], [Your Contact Information], [Your Email], etc.
+- NEVER make up a name - use EXACTLY: ${sellerName}
+- NEVER make up an email - use EXACTLY: ${sellerEmail}
+- Copy the signature exactly as shown above, word for word
+- This is a MANDATORY requirement - failure to use the correct signature is unacceptable
 
 Remember: Build interest and value FIRST. Price discussion comes ONLY when they ask or show strong interest.`
       }
@@ -180,6 +194,8 @@ Remember: Build interest and value FIRST. Price discussion comes ONLY when they 
     console.log(`   Style: ${responseStyle}, Length: ${responseLength}`);
     if (askingPrice) console.log(`   Asking Price: $${askingPrice}`);
     if (minimumPrice) console.log(`   Min Price: $${minimumPrice}`);
+    console.log(`   Signature in prompt: "${sellerName}${sellerEmail ? `\n${sellerEmail}` : ''}"`);
+    console.log(`   Total messages in context: ${messages.length}`);
 
     // Adjust max_tokens based on response length
     const maxTokens = {

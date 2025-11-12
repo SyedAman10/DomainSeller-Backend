@@ -144,15 +144,34 @@ router.post('/mailgun', async (req, res) => {
     }
 
     // Get user information for signature
-    const userInfo = await query(
-      'SELECT username, email, full_name FROM users WHERE id = $1',
-      [campaign.user_id]
-    );
+    console.log(`🔍 Fetching user info for user_id: ${campaign.user_id}...`);
+    
+    let sellerName = 'Domain Seller';
+    let sellerEmail = '';
+    
+    try {
+      const userInfo = await query(
+        'SELECT username, email, full_name FROM users WHERE id = $1',
+        [campaign.user_id]
+      );
 
-    const sellerName = userInfo.rows[0]?.full_name || userInfo.rows[0]?.username || 'Domain Seller';
-    const sellerEmail = userInfo.rows[0]?.email || '';
+      console.log(`   Query returned ${userInfo.rows.length} row(s)`);
+      
+      if (userInfo.rows.length > 0) {
+        console.log(`   Raw user data:`, JSON.stringify(userInfo.rows[0], null, 2));
+        sellerName = userInfo.rows[0]?.full_name || userInfo.rows[0]?.username || 'Domain Seller';
+        sellerEmail = userInfo.rows[0]?.email || '';
+        console.log(`✅ User found: ${sellerName} (${sellerEmail})`);
+      } else {
+        console.warn(`⚠️  No user found with ID: ${campaign.user_id}`);
+        console.warn(`   Using fallback: ${sellerName}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error fetching user info:`, error.message);
+      console.log(`   Using fallback: ${sellerName}`);
+    }
 
-    console.log(`👤 Seller Info: ${sellerName} (${sellerEmail})`);
+    console.log(`👤 Final Seller Info: ${sellerName} (${sellerEmail})`);
 
     // Get conversation history
     const history = await query(
