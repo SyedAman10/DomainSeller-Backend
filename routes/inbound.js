@@ -143,6 +143,17 @@ router.post('/mailgun', async (req, res) => {
       });
     }
 
+    // Get user information for signature
+    const userInfo = await query(
+      'SELECT username, email, full_name FROM users WHERE id = $1',
+      [campaign.user_id]
+    );
+
+    const sellerName = userInfo.rows[0]?.full_name || userInfo.rows[0]?.username || 'Domain Seller';
+    const sellerEmail = userInfo.rows[0]?.email || '';
+
+    console.log(`👤 Seller Info: ${sellerName} (${sellerEmail})`);
+
     // Get conversation history
     const history = await query(
       `SELECT direction, message_content, received_at
@@ -166,6 +177,8 @@ router.post('/mailgun', async (req, res) => {
       buyerMessage: messageContent,
       domainName: campaign.domain_name,
       buyerName: buyerName,
+      sellerName: sellerName,
+      sellerEmail: sellerEmail,
       conversationHistory: conversationHistory,
       campaignInfo: {
         emailTone: campaign.email_tone,

@@ -14,6 +14,8 @@ const generateAIResponse = async (context) => {
     buyerMessage,
     domainName,
     buyerName,
+    sellerName = 'Domain Seller',
+    sellerEmail = '',
     conversationHistory = [],
     campaignInfo = {}
   } = context;
@@ -21,6 +23,7 @@ const generateAIResponse = async (context) => {
   console.log('🤖 AI AGENT - Generating Response');
   console.log(`   Domain: ${domainName}`);
   console.log(`   Buyer: ${buyerName}`);
+  console.log(`   Seller: ${sellerName} (${sellerEmail})`);
   console.log(`   Message Length: ${buyerMessage.length} characters`);
 
   try {
@@ -148,6 +151,13 @@ CRITICAL RULES:
 - Match the buyer's communication energy
 - Always end with clear next steps or questions to keep conversation going
 
+EMAIL SIGNATURE:
+- ALWAYS end your email with this signature (no placeholders!):
+  "Best regards,
+  ${sellerName}${sellerEmail ? `\n${sellerEmail}` : ''}"
+- DO NOT use placeholders like [Your Name] or [Your Contact Information]
+- Use the exact name and email provided above
+
 Remember: Build interest and value FIRST. Price discussion comes ONLY when they ask or show strong interest.`
       }
     ];
@@ -223,7 +233,8 @@ Could you let me know what specific questions you have? I'm here to help and can
 
 Looking forward to hearing from you!
 
-Best regards`;
+Best regards,
+${sellerName}${sellerEmail ? `\n${sellerEmail}` : ''}`;
 
     return {
       success: false,
