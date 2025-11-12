@@ -151,7 +151,7 @@ router.post('/mailgun', async (req, res) => {
     
     try {
       const userInfo = await query(
-        'SELECT username, email, full_name FROM users WHERE id = $1',
+        'SELECT username, email, first_name, last_name FROM users WHERE id = $1',
         [campaign.user_id]
       );
 
@@ -159,8 +159,16 @@ router.post('/mailgun', async (req, res) => {
       
       if (userInfo.rows.length > 0) {
         console.log(`   Raw user data:`, JSON.stringify(userInfo.rows[0], null, 2));
-        sellerName = userInfo.rows[0]?.full_name || userInfo.rows[0]?.username || 'Domain Seller';
-        sellerEmail = userInfo.rows[0]?.email || '';
+        
+        const user = userInfo.rows[0];
+        const firstName = user.first_name || '';
+        const lastName = user.last_name || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        
+        // Priority: full name (first + last), then username, then fallback
+        sellerName = fullName || user.username || 'Domain Seller';
+        sellerEmail = user.email || '';
+        
         console.log(`✅ User found: ${sellerName} (${sellerEmail})`);
       } else {
         console.warn(`⚠️  No user found with ID: ${campaign.user_id}`);
