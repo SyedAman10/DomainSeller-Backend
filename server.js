@@ -67,7 +67,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
+// Health check endpoints (both root and /backend for flexibility)
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    message: 'Campaign Backend is running',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 app.get('/backend/health', (req, res) => {
   res.status(200).json({
     status: 'OK',
