@@ -92,6 +92,10 @@ app.use('/backend/webhooks', webhookRoutes);
 app.use('/backend/monitoring', monitoringRoutes);
 app.use('/backend/inbound', inboundRoutes);
 
+// Mailgun webhook routes (must be accessible without prefix for webhooks)
+app.use('/inbound', inboundRoutes);
+app.use('/webhooks', webhookRoutes);
+
 // 404 handler
 app.use((req, res) => {
   console.error('❌ 404 NOT FOUND:');
