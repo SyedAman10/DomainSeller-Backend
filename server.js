@@ -11,6 +11,7 @@ const campaignRoutes = require('./routes/campaigns');
 const webhookRoutes = require('./routes/webhooks');
 const monitoringRoutes = require('./routes/monitoring');
 const inboundRoutes = require('./routes/inbound');
+const escrowRoutes = require('./routes/escrow');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -91,10 +92,14 @@ app.use('/backend/campaigns', campaignRoutes);
 app.use('/backend/webhooks', webhookRoutes);
 app.use('/backend/monitoring', monitoringRoutes);
 app.use('/backend/inbound', inboundRoutes);
+app.use('/backend/escrow', escrowRoutes);
 
 // Mailgun webhook routes (must be accessible without prefix for webhooks)
 app.use('/inbound', inboundRoutes);
 app.use('/webhooks', webhookRoutes);
+
+// Escrow webhook route (must be accessible without prefix)
+app.use('/escrow', escrowRoutes);
 
 // 404 handler
 app.use((req, res) => {

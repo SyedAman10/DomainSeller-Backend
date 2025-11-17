@@ -176,6 +176,12 @@ RULES FOR EVERY RESPONSE:
 
 ${customInstructions ? `CUSTOM INSTRUCTIONS:\n${customInstructions}` : ''}
 
+PAYMENT & ESCROW HANDLING:
+- If buyer asks about payment, how to pay, or requests a payment link, say: "I'll send you a secure escrow payment link shortly."
+- IMPORTANT: Do NOT include any payment links in your response - they will be automatically added by the system
+- If they mention "escrow", reassure them: "Yes, we use Escrow.com for secure transactions."
+- Keep payment discussions brief and professional
+
 CRITICAL RULES:
 - Use buyer's name: ${buyerName}
 - **NEVER say "The asking price is..." or "The price is..." unless they explicitly asked**
@@ -302,6 +308,7 @@ const analyzeBuyerIntent = (message) => {
     isReady: false,
     isNotInterested: false,
     hasQuestions: false,
+    wantsPaymentLink: false,
     sentiment: 'neutral'
   };
 
@@ -329,8 +336,16 @@ const analyzeBuyerIntent = (message) => {
   const questionIndicators = ['?', 'what', 'how', 'when', 'where', 'why', 'can you'];
   intent.hasQuestions = questionIndicators.some(word => lowerMessage.includes(word));
 
+  // Payment link request - NEW!
+  const paymentKeywords = [
+    'payment link', 'pay link', 'how to pay', 'how do i pay', 'payment method',
+    'send payment', 'payment details', 'how to purchase', 'buying process',
+    'payment page', 'checkout', 'escrow', 'make payment', 'pay for', 'ready to buy'
+  ];
+  intent.wantsPaymentLink = paymentKeywords.some(keyword => lowerMessage.includes(keyword));
+
   // Determine sentiment
-  if (intent.isReady) intent.sentiment = 'very_positive';
+  if (intent.isReady || intent.wantsPaymentLink) intent.sentiment = 'very_positive';
   else if (intent.isInterested || intent.isNegotiating) intent.sentiment = 'positive';
   else if (intent.isPriceObjection) intent.sentiment = 'neutral';
   else if (intent.isNotInterested) intent.sentiment = 'negative';

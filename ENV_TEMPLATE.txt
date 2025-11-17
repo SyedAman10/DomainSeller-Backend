@@ -8,7 +8,12 @@ NEON_DATABASE_URL=postgresql://username:password@your-neon-hostname.neon.tech/da
 # Mailgun Configuration
 MAILGUN_API_KEY=xxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx
 MAILGUN_DOMAIN=your-domain.mailgun.org
-MAILGUN_FROM_EMAIL=noreply@your-domain.mailgun.org
+MAILGUN_FROM_EMAIL=admin@your-domain.mailgun.org
+
+# Escrow.com Integration (OPTIONAL - works without these)
+ESCROW_API_URL=https://api.escrow.com/2017-09-01
+ESCROW_EMAIL=your-email@example.com
+ESCROW_API_KEY=your_escrow_api_key
 
 # OpenAI Configuration (for AI Email Agent)
 OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

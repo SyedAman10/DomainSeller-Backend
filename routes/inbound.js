@@ -8,6 +8,7 @@ const {
   notifyAutoResponse, 
   notifyManualSend 
 } = require('../services/notificationService');
+const { createEscrowTransaction } = require('../services/escrowService');
 
 /**
  * POST /api/inbound/mailgun
@@ -132,6 +133,7 @@ router.post('/mailgun', async (req, res) => {
     console.log(`   Interested: ${intent.isInterested}`);
     console.log(`   Price Objection: ${intent.isPriceObjection}`);
     console.log(`   Ready to Buy: ${intent.isReady}`);
+    console.log(`   Wants Payment Link: ${intent.wantsPaymentLink}`);
     console.log(`   Not Interested: ${intent.isNotInterested}`);
 
     // If buyer is not interested, don't reply
@@ -222,7 +224,66 @@ router.post('/mailgun', async (req, res) => {
       console.warn('⚠️  AI generation failed, using fallback response');
     }
 
-    const responseText = aiResponse.reply;
+    let responseText = aiResponse.reply;
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ESCROW INTEGRATION - Generate payment link if requested
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (intent.wantsPaymentLink || intent.isReady) {
+      console.log('💰 Buyer wants payment link - generating escrow transaction...');
+      
+      try {
+        // Get campaign pricing info
+        const askingPrice = campaign.asking_price || campaign.minimum_price;
+        
+        if (askingPrice) {
+          const escrowResult = await createEscrowTransaction({
+            domainName: campaign.domain_name,
+            buyerEmail: buyerEmail,
+            buyerName: buyerName,
+            sellerEmail: sellerEmail,
+            sellerName: sellerName,
+            amount: askingPrice,
+            currency: 'USD',
+            campaignId: campaign.campaign_id,
+            userId: campaign.user_id,
+            feePayer: campaign.escrow_fee_payer || 'buyer'
+          });
+
+          if (escrowResult.success) {
+            console.log('✅ Escrow link generated successfully!');
+            
+            // Append escrow link to AI response
+            const escrowSection = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+              `💳 **SECURE PAYMENT LINK**\n\n` +
+              `To complete your purchase securely through Escrow.com:\n\n` +
+              `🔗 ${escrowResult.escrowUrl}\n\n` +
+              `💰 Amount: $${escrowResult.amount} ${escrowResult.currency}\n` +
+              `🛡️ Protected by Escrow.com\n` +
+              `${escrowResult.feePayer === 'buyer' ? '📋 Escrow fees paid by buyer' : 
+                escrowResult.feePayer === 'seller' ? '📋 Escrow fees paid by seller' : 
+                '📋 Escrow fees split 50/50'}\n\n` +
+              `Escrow.com ensures safe transfer - your payment is protected until you receive the domain.\n` +
+              `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+            responseText += escrowSection;
+            console.log('📧 Escrow payment link added to response');
+          } else {
+            console.warn('⚠️  Failed to generate escrow link');
+          }
+        } else {
+          console.warn('⚠️  No pricing info available - cannot generate escrow link');
+          
+          // Add a note asking buyer to confirm price first
+          responseText += `\n\nTo proceed with payment, could you confirm the price you'd like to offer? ` +
+            `Once we agree on the price, I'll send you a secure escrow payment link.`;
+        }
+      } catch (error) {
+        console.error('❌ Error generating escrow link:', error);
+        // Continue without escrow link
+      }
+    }
+
     const autoResponseEnabled = campaign.auto_response_enabled !== false; // Default to true if null
     const notificationEmail = campaign.notification_email;
 
