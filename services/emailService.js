@@ -43,7 +43,7 @@ const sendEmail = async (emailData) => {
     }
 
     // Set Reply-To to sandbox domain for AI agent to receive replies
-    const replyToEmail = `noreply@${MAILGUN_DOMAIN}`;
+    const replyToEmail = `admin@${MAILGUN_DOMAIN}`;
     console.log(`📧 Reply-To set to: ${replyToEmail}`);
 
     const form = new FormData();
