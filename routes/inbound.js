@@ -57,14 +57,19 @@ router.post('/mailgun', async (req, res) => {
         c.auto_response_enabled,
         c.notification_email,
         c.minimum_price,
+        c.asking_price,
+        c.escrow_enabled,
+        c.escrow_fee_payer,
         c.negotiation_strategy,
         c.response_style,
         c.response_length,
         c.custom_instructions,
-        c.highlight_features
+        c.highlight_features,
+        d.value as domain_value
        FROM campaigns c
        LEFT JOIN sent_emails se ON se.campaign_id = c.campaign_id
        LEFT JOIN scheduled_emails sch ON sch.campaign_id = c.campaign_id
+       LEFT JOIN domains d ON d.domain_name = c.domain_name
        WHERE se.buyer_email = $1 OR sch.buyer_email = $1
        ORDER BY c.created_at DESC
        LIMIT 1`,
@@ -233,8 +238,14 @@ router.post('/mailgun', async (req, res) => {
       console.log('💰 Buyer wants payment link - generating escrow transaction...');
       
       try {
-        // Get campaign pricing info
-        const askingPrice = campaign.asking_price || campaign.minimum_price;
+        // Get campaign pricing info - check multiple sources
+        const askingPrice = campaign.asking_price || campaign.minimum_price || campaign.domain_value;
+        
+        console.log(`💵 Price lookup:`);
+        console.log(`   asking_price: ${campaign.asking_price || 'not set'}`);
+        console.log(`   minimum_price: ${campaign.minimum_price || 'not set'}`);
+        console.log(`   domain_value: ${campaign.domain_value || 'not set'}`);
+        console.log(`   → Using: $${askingPrice || 'NONE'}`);
         
         if (askingPrice) {
           const escrowResult = await createEscrowTransaction({
@@ -273,6 +284,7 @@ router.post('/mailgun', async (req, res) => {
           }
         } else {
           console.warn('⚠️  No pricing info available - cannot generate escrow link');
+          console.warn('   Please set asking_price on campaign or value on domain');
           
           // Add a note asking buyer to confirm price first
           responseText += `\n\nTo proceed with payment, could you confirm the price you'd like to offer? ` +
