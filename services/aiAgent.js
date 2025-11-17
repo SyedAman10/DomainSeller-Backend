@@ -342,7 +342,10 @@ const analyzeBuyerIntent = (message) => {
   const paymentKeywords = [
     'payment link', 'pay link', 'how to pay', 'how do i pay', 'payment method',
     'send payment', 'payment details', 'how to purchase', 'buying process',
-    'payment page', 'checkout', 'escrow', 'make payment', 'pay for', 'ready to buy'
+    'payment page', 'checkout', 'escrow', 'make payment', 'pay for', 'ready to buy',
+    'need link', 'send link', 'give me link', 'want link', 'link please',
+    'i need the link', 'send me the link', 'give me the link', 'where is the link',
+    'can i get the link', 'share the link', 'provide link', 'link?'
   ];
   intent.wantsPaymentLink = paymentKeywords.some(keyword => lowerMessage.includes(keyword));
 
