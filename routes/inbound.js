@@ -69,7 +69,7 @@ router.post('/mailgun', async (req, res) => {
        FROM campaigns c
        LEFT JOIN sent_emails se ON se.campaign_id = c.campaign_id
        LEFT JOIN scheduled_emails sch ON sch.campaign_id = c.campaign_id
-       LEFT JOIN domains d ON d.domain_name = c.domain_name
+       LEFT JOIN domains d ON d.name = c.domain_name
        WHERE se.buyer_email = $1 OR sch.buyer_email = $1
        ORDER BY c.created_at DESC
        LIMIT 1`,

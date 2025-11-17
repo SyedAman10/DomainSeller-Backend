@@ -37,12 +37,14 @@ async function checkDomainPrices() {
       await pool.query(`
         CREATE TABLE domains (
           id SERIAL PRIMARY KEY,
-          domain_name VARCHAR(255) UNIQUE NOT NULL,
-          value DECIMAL(10, 2),
-          registrar VARCHAR(100),
-          expiry_date DATE,
-          created_at TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW()
+          user_id INTEGER REFERENCES users(id),
+          name TEXT NOT NULL,
+          value DECIMAL(12, 2) NOT NULL,
+          category TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'Available' CHECK (status IN ('Available', 'Pending', 'Sold')),
+          keywords TEXT[] DEFAULT '{}',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
       `);
       
@@ -82,14 +84,14 @@ async function checkDomainPrices() {
     
     const domains = await pool.query(`
       SELECT 
-        d.domain_name,
+        d.name as domain_name,
         d.value as domain_value,
         c.campaign_id,
         c.asking_price,
         c.minimum_price
       FROM domains d
-      LEFT JOIN campaigns c ON c.domain_name = d.domain_name
-      ORDER BY d.domain_name;
+      LEFT JOIN campaigns c ON c.domain_name = d.name
+      ORDER BY d.name;
     `);
 
     if (domains.rows.length === 0) {
@@ -97,8 +99,8 @@ async function checkDomainPrices() {
       console.log('');
       console.log('To add a domain with price:');
       console.log(`
-INSERT INTO domains (domain_name, value) 
-VALUES ('example.com', 5000);
+INSERT INTO domains (user_id, name, value, category, status) 
+VALUES (12, 'example.com', 5000, 'premium', 'Available');
       `);
     } else {
       console.log('');
@@ -124,7 +126,7 @@ VALUES ('example.com', 5000);
         noPrices.forEach(row => {
           console.log(`❌ ${row.domain_name} - No price set anywhere!`);
           console.log(`   Fix with:`);
-          console.log(`   UPDATE domains SET value = 5000 WHERE domain_name = '${row.domain_name}';`);
+          console.log(`   UPDATE domains SET value = 5000 WHERE name = '${row.domain_name}';`);
           console.log(`   OR`);
           console.log(`   UPDATE campaigns SET asking_price = 5000 WHERE domain_name = '${row.domain_name}';`);
           console.log('');
