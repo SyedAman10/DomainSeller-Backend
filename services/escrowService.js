@@ -152,7 +152,7 @@ const createEscrowTransaction = async (transactionData) => {
 
 /**
  * Generate a manual escrow link (for users without API access)
- * This creates a pre-filled Escrow.com link
+ * Since Escrow.com doesn't support pre-filled links, we provide their domain transaction page
  */
 const generateManualEscrowLink = (transactionData) => {
   const {
@@ -164,18 +164,16 @@ const generateManualEscrowLink = (transactionData) => {
     feePayer = 'buyer'
   } = transactionData;
 
-  // Create a manual escrow link with pre-filled information
-  // Escrow.com allows URL parameters for quick transaction creation
-  const escrowUrl = `https://www.escrow.com/web-api-v2/home?action=create-transaction` +
-    `&domain=${encodeURIComponent(domainName)}` +
-    `&buyer_email=${encodeURIComponent(buyerEmail)}` +
-    `&seller_email=${encodeURIComponent(sellerEmail)}` +
-    `&amount=${amount}` +
-    `&currency=${currency}` +
-    `&who_pays_fee=${feePayer}`;
+  // Escrow.com's domain name transaction page
+  // Users will need to manually enter details there
+  const escrowUrl = `https://www.escrow.com/what-is-escrow/domain-name-escrow`;
 
   console.log(`✅ Manual escrow link generated`);
   console.log(`🔗 URL: ${escrowUrl}`);
+  console.log(`   Domain: ${domainName}`);
+  console.log(`   Amount: ${amount} ${currency}`);
+  console.log(`   Buyer: ${buyerEmail}`);
+  console.log(`   Seller: ${sellerEmail}`);
 
   return {
     success: true,
@@ -183,8 +181,11 @@ const generateManualEscrowLink = (transactionData) => {
     amount,
     currency,
     feePayer,
+    domainName,
+    buyerEmail,
+    sellerEmail,
     isManual: true,
-    message: 'Manual escrow link generated (API not configured)'
+    message: 'Manual escrow instructions generated (API not configured)'
   };
 };
 

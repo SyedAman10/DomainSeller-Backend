@@ -264,21 +264,42 @@ router.post('/mailgun', async (req, res) => {
           if (escrowResult.success) {
             console.log('✅ Escrow link generated successfully!');
             
-            // Append escrow link to AI response
-            const escrowSection = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-              `💳 **SECURE PAYMENT LINK**\n\n` +
-              `To complete your purchase securely through Escrow.com:\n\n` +
-              `🔗 ${escrowResult.escrowUrl}\n\n` +
-              `💰 Amount: $${escrowResult.amount} ${escrowResult.currency}\n` +
-              `🛡️ Protected by Escrow.com\n` +
-              `${escrowResult.feePayer === 'buyer' ? '📋 Escrow fees paid by buyer' : 
-                escrowResult.feePayer === 'seller' ? '📋 Escrow fees paid by seller' : 
-                '📋 Escrow fees split 50/50'}\n\n` +
-              `Escrow.com ensures safe transfer - your payment is protected until you receive the domain.\n` +
-              `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+            // Check if it's manual or API-generated escrow
+            let escrowSection;
+            
+            if (escrowResult.isManual) {
+              // Manual escrow - provide detailed instructions
+              escrowSection = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+                `💳 **SECURE PAYMENT INSTRUCTIONS**\n\n` +
+                `I'll set up the escrow transaction for ${campaign.domain_name}:\n\n` +
+                `📋 **Transaction Details:**\n` +
+                `   • Domain: ${escrowResult.domainName}\n` +
+                `   • Price: $${escrowResult.amount} ${escrowResult.currency}\n` +
+                `   • Buyer: ${escrowResult.buyerEmail}\n` +
+                `   • Seller: ${escrowResult.sellerEmail}\n` +
+                `   • Fees: Paid by ${escrowResult.feePayer}\n\n` +
+                `🔗 **Escrow.com Link:** ${escrowResult.escrowUrl}\n\n` +
+                `I'll create the escrow transaction on Escrow.com and send you the payment link within 24 hours. ` +
+                `You'll receive an email from Escrow.com with instructions to complete the payment.\n\n` +
+                `🛡️ Your payment will be held securely by Escrow.com until you confirm receipt of the domain.\n` +
+                `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+            } else {
+              // API-generated escrow with direct payment link
+              escrowSection = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+                `💳 **SECURE PAYMENT LINK**\n\n` +
+                `To complete your purchase securely through Escrow.com:\n\n` +
+                `🔗 ${escrowResult.escrowUrl}\n\n` +
+                `💰 Amount: $${escrowResult.amount} ${escrowResult.currency}\n` +
+                `🛡️ Protected by Escrow.com\n` +
+                `${escrowResult.feePayer === 'buyer' ? '📋 Escrow fees paid by buyer' : 
+                  escrowResult.feePayer === 'seller' ? '📋 Escrow fees paid by seller' : 
+                  '📋 Escrow fees split 50/50'}\n\n` +
+                `Escrow.com ensures safe transfer - your payment is protected until you receive the domain.\n` +
+                `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+            }
 
             responseText += escrowSection;
-            console.log('📧 Escrow payment link added to response');
+            console.log('📧 Escrow payment instructions added to response');
           } else {
             console.warn('⚠️  Failed to generate escrow link');
           }
