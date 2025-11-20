@@ -41,9 +41,17 @@ const createEscrowTransaction = async (transactionData) => {
     // Check if user has escrow configured
     const userConfig = await getUserEscrowConfig(userId);
     
-    if (!userConfig.enabled) {
-      console.warn('⚠️  User has not connected escrow account - using manual link');
+    // If user hasn't connected their account, check if global credentials exist
+    if (!userConfig.enabled && (!ESCROW_EMAIL || !ESCROW_API_KEY)) {
+      console.warn('⚠️  No escrow credentials configured (user or global) - using manual link');
       return generateManualEscrowLink(transactionData);
+    }
+    
+    // Log which credentials we're using
+    if (userConfig.enabled) {
+      console.log('✅ Using user-specific escrow credentials');
+    } else {
+      console.log('✅ Using global escrow credentials from .env');
     }
 
     // Use Escrow.com API to create transaction
@@ -117,10 +125,13 @@ const createEscrowTransaction = async (transactionData) => {
     console.log('🚀 Calling Escrow.com API...');
 
     let response;
-    if (ESCROW_API_KEY && userConfig.apiKey) {
+    // Use user credentials if available, otherwise fall back to global credentials
+    const apiEmail = (userConfig.enabled && userConfig.email) ? userConfig.email : ESCROW_EMAIL;
+    const apiKey = (userConfig.enabled && userConfig.apiKey) ? userConfig.apiKey : ESCROW_API_KEY;
+    
+    if (apiEmail && apiKey) {
       // Make actual API call if configured
-      const apiEmail = userConfig.email || ESCROW_EMAIL;
-      const apiKey = userConfig.apiKey || ESCROW_API_KEY;
+      console.log(`🔑 Using API credentials: ${apiEmail}`);
       const authHeader = Buffer.from(`${apiEmail}:${apiKey}`).toString('base64');
       
       response = await axios.post(
