@@ -75,17 +75,11 @@ async function testCreateTransaction() {
     parties: [
       {
         role: 'buyer',
-        customer: {
-          name: 'John Buyer',
-          email: 'buyer-test@example.com'
-        }
+        customer: 'buyer-test@example.com'
       },
       {
         role: 'seller',
-        customer: {
-          name: 'Domain Seller',
-          email: ESCROW_EMAIL
-        }
+        customer: ESCROW_EMAIL
       }
     ],
     currency: 'usd',
@@ -95,7 +89,7 @@ async function testCreateTransaction() {
         title: 'example.com',
         description: 'Domain name: example.com',
         type: 'domain_name',
-        inspection_period: 259200, // 3 days
+        inspection_period: 259200, // 3 days in seconds
         quantity: 1,
         schedule: [
           {
@@ -107,6 +101,7 @@ async function testCreateTransaction() {
         fees: [
           {
             type: 'escrow',
+            amount: 35.00, // Escrow fee amount
             payer_customer: 'buyer-test@example.com'
           }
         ]
@@ -122,22 +117,22 @@ async function testCreateTransaction() {
     console.log(`   Seller: ${ESCROW_EMAIL}`);
     console.log();
 
+    const authHeader = Buffer.from(`${ESCROW_EMAIL}:${ESCROW_API_KEY}`).toString('base64');
+
     const response = await axios.post(
       `${ESCROW_API_URL}/transaction`,
       testTransaction,
       {
-        auth: {
-          username: ESCROW_EMAIL,
-          password: ESCROW_API_KEY
-        },
         headers: {
+          'Authorization': `Basic ${authHeader}`,
           'Content-Type': 'application/json'
         }
       }
     );
 
     const transactionId = response.data.id;
-    const escrowUrl = `https://www.escrow-sandbox.com/transaction/${transactionId}`;
+    const baseUrl = ESCROW_API_URL.includes('sandbox') ? 'https://www.escrow-sandbox.com' : 'https://www.escrow.com';
+    const escrowUrl = `${baseUrl}/transaction/${transactionId}`;
 
     console.log('✅ Transaction created successfully!');
     console.log(`   Transaction ID: ${transactionId}`);
@@ -175,14 +170,13 @@ async function testListTransactions() {
   console.log('─'.repeat(60));
   
   try {
+    const authHeader = Buffer.from(`${ESCROW_EMAIL}:${ESCROW_API_KEY}`).toString('base64');
+    
     const response = await axios.get(
       `${ESCROW_API_URL}/transaction`,
       {
-        auth: {
-          username: ESCROW_EMAIL,
-          password: ESCROW_API_KEY
-        },
         headers: {
+          'Authorization': `Basic ${authHeader}`,
           'Content-Type': 'application/json'
         }
       }

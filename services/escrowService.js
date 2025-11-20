@@ -47,24 +47,22 @@ const createEscrowTransaction = async (transactionData) => {
     }
 
     // Use Escrow.com API to create transaction
+    // Calculate escrow fee (approximately 3.25% of transaction, min $25)
+    const transactionAmount = parseFloat(amount);
+    const escrowFee = Math.max(25, transactionAmount * 0.0325);
+    
     const escrowData = {
       parties: [
         {
           role: 'buyer',
-          customer: {
-            name: buyerName,
-            email: buyerEmail
-          }
+          customer: buyerEmail
         },
         {
           role: 'seller',
-          customer: {
-            name: sellerName,
-            email: sellerEmail
-          }
+          customer: sellerEmail
         }
       ],
-      currency: currency,
+      currency: currency.toLowerCase(),
       description: `Purchase of domain name: ${domainName}`,
       items: [
         {
@@ -75,7 +73,7 @@ const createEscrowTransaction = async (transactionData) => {
           quantity: 1,
           schedule: [
             {
-              amount: parseFloat(amount),
+              amount: transactionAmount,
               payer_customer: buyerEmail,
               beneficiary_customer: sellerEmail
             }
@@ -83,9 +81,10 @@ const createEscrowTransaction = async (transactionData) => {
           fees: [
             {
               type: 'escrow',
+              amount: escrowFee,
               payer_customer: feePayer === 'buyer' ? buyerEmail : 
                               feePayer === 'seller' ? sellerEmail : 
-                              null // split
+                              buyerEmail // default to buyer if split
             }
           ]
         }
@@ -97,22 +96,25 @@ const createEscrowTransaction = async (transactionData) => {
     let response;
     if (ESCROW_API_KEY && userConfig.apiKey) {
       // Make actual API call if configured
+      const apiEmail = userConfig.email || ESCROW_EMAIL;
+      const apiKey = userConfig.apiKey || ESCROW_API_KEY;
+      const authHeader = Buffer.from(`${apiEmail}:${apiKey}`).toString('base64');
+      
       response = await axios.post(
         `${ESCROW_API_URL}/transaction`,
         escrowData,
         {
-          auth: {
-            username: userConfig.email || ESCROW_EMAIL,
-            password: userConfig.apiKey || ESCROW_API_KEY
-          },
           headers: {
+            'Authorization': `Basic ${authHeader}`,
             'Content-Type': 'application/json'
           }
         }
       );
 
       const transactionId = response.data.id;
-      const escrowUrl = `https://www.escrow.com/transaction/${transactionId}`;
+      // Use sandbox URL if in sandbox mode, production otherwise
+      const baseUrl = ESCROW_API_URL.includes('sandbox') ? 'https://www.escrow-sandbox.com' : 'https://www.escrow.com';
+      const escrowUrl = `${baseUrl}/transaction/${transactionId}`;
 
       console.log(`✅ Escrow transaction created: ${transactionId}`);
       console.log(`🔗 Payment URL: ${escrowUrl}`);
