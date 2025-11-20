@@ -9,6 +9,7 @@
     "monitor": "node monitor-dashboard.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:duplicates": "node test-duplicate-prevention.js",
+    "test:escrow": "node test-escrow-api.js",
     "clean:campaigns": "node delete-all-campaigns.js"
   },
   "keywords": [

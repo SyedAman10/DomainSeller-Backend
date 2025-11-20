@@ -164,9 +164,9 @@ const generateManualEscrowLink = (transactionData) => {
     feePayer = 'buyer'
   } = transactionData;
 
-  // Escrow.com's domain name transaction page
+  // Escrow.com's main domain transaction page (verified working URL)
   // Users will need to manually enter details there
-  const escrowUrl = `https://www.escrow.com/what-is-escrow/domain-name-escrow`;
+  const escrowUrl = `https://www.escrow.com/domains`;
 
   console.log(`✅ Manual escrow link generated`);
   console.log(`🔗 URL: ${escrowUrl}`);
