@@ -315,25 +315,29 @@ Subject: 🔔 APPROVAL NEEDED: John Buyer wants to buy example.com!
 
 ## ⚙️ Configuration
 
-### Enable for Campaigns
+### Automatic Email Configuration ✅
 
-Make sure campaigns have notification email set:
+**No configuration needed!** The system automatically sends notifications to:
+1. **First choice:** Campaign's `notification_email` (if set)
+2. **Automatic fallback:** Campaign owner's email (from users table)
+
+This means you'll receive notifications at the **same email you use to login** - no extra setup required!
+
+### Optional: Set Custom Notification Email
+
+If you want notifications sent to a DIFFERENT email than your login email:
 
 ```sql
 UPDATE campaigns
-SET notification_email = 'admin@yourdomain.com',
-    auto_response_enabled = true
+SET notification_email = 'different-email@yourdomain.com'
 WHERE campaign_id = 'your_campaign_id';
 ```
 
-### Without this:
-- ❌ Admin won't receive notifications
-- ❌ Approval system won't work
-
-### With this:
+### What You Get:
 - ✅ Admin receives every conversation
 - ✅ Approval emails sent automatically
 - ✅ Full thread included
+- ✅ Uses your account email by default
 
 ---
 
@@ -396,15 +400,20 @@ System creates escrow transaction
 ### Not Receiving Notifications?
 
 **Check:**
-1. Campaign has `notification_email` set
-2. Email is valid
-3. Check spam folder
-4. Verify Mailgun is configured
+1. Your user account email is valid (check `users` table)
+2. Check spam folder
+3. Verify Mailgun is configured in `.env`
+4. Server is running
 
-**Fix:**
+**View your account email:**
+```sql
+SELECT id, username, email FROM users WHERE id = YOUR_USER_ID;
+```
+
+**Optional - Set different email for notifications:**
 ```sql
 UPDATE campaigns
-SET notification_email = 'your-email@domain.com'
+SET notification_email = 'different-email@domain.com'
 WHERE campaign_id = 'your_campaign_id';
 ```
 
@@ -452,20 +461,30 @@ GROUP BY status;
 ## 🚀 Quick Setup
 
 ### 1. Run Database Migration
+
+**Easy way (Automatic):**
+```bash
+npm run setup:escrow-approvals
+```
+
+**Or manual way:**
 ```bash
 psql $NEON_DATABASE_URL -f database/add_escrow_approvals.sql
 ```
 
-### 2. Set Notification Email
-```sql
-UPDATE campaigns
-SET notification_email = 'admin@yourdomain.com'
-WHERE campaign_id = 'your_campaign_id';
-```
-
-### 3. Restart Server
+### 2. Restart Server
 ```bash
 npm start
+```
+
+**That's it!** Notifications will automatically go to your account email.
+
+### Optional: Set Different Notification Email
+If you want notifications sent to a DIFFERENT email:
+```sql
+UPDATE campaigns
+SET notification_email = 'different-email@gmail.com'
+WHERE campaign_id = 'your_campaign_id';
 ```
 
 ### 4. Test It!

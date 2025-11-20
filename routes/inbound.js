@@ -288,9 +288,12 @@ router.post('/mailgun', async (req, res) => {
     }
 
     const autoResponseEnabled = campaign.auto_response_enabled !== false; // Default to true if null
-    const notificationEmail = campaign.notification_email;
+    
+    // Use notification_email if set, otherwise use seller's email (campaign owner)
+    const notificationEmail = campaign.notification_email || sellerEmail;
 
     console.log(`⚙️  Auto-response: ${autoResponseEnabled ? 'ON' : 'OFF'}`);
+    console.log(`📧 Admin notification email: ${notificationEmail}`);
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MODE 1: AUTO-RESPONSE ENABLED (Send immediately)
