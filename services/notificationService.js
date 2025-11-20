@@ -330,18 +330,77 @@ async function notifyNewReply({
 
 /**
  * Notify user about auto-sent reply (auto-response ON)
+ * NOW INCLUDES: Full conversation thread + Escrow approval requirement
  */
 async function notifyAutoResponse({ 
   notificationEmail, 
   campaignName, 
   domainName,
-  buyerEmail, 
+  buyerEmail,
+  buyerName,
   buyerMessage,
   aiResponse,
   campaignId,
+  conversationThread = [],
+  requiresApproval = false,
+  askingPrice = null,
   dashboardUrl = 'https://3vltn.com'
 }) {
-  const subject = `✅ Auto-Reply Sent: ${domainName}`;
+  const subject = requiresApproval ? 
+    `🔔 APPROVAL NEEDED: ${buyerName} wants to buy ${domainName}!` :
+    `✅ Auto-Reply Sent: ${domainName}`;
+  
+  // Build conversation thread HTML
+  let threadHTML = '';
+  if (conversationThread.length > 0) {
+    threadHTML = '<div style="background:#f1f5f9;padding:20px;border-radius:8px;margin:20px 0;">';
+    threadHTML += '<h3 style="margin:0 0 15px 0;color:#1e40af;font-size:16px;">📜 Full Conversation Thread</h3>';
+    
+    conversationThread.forEach((msg, idx) => {
+      const isInbound = msg.direction === 'inbound';
+      const bgColor = isInbound ? '#fff' : '#dbeafe';
+      const borderColor = isInbound ? '#10b981' : '#1e40af';
+      
+      threadHTML += `
+        <div style="background:${bgColor};padding:15px;margin:10px 0;border-left:4px solid ${borderColor};border-radius:6px;">
+          <div style="font-weight:600;color:${borderColor};margin-bottom:8px;font-size:13px;">
+            ${isInbound ? '👤 Buyer' : '🤖 You (AI)'} • ${new Date(msg.received_at).toLocaleString()}
+          </div>
+          <div style="color:#334155;line-height:1.6;">
+            ${msg.message_content.substring(0, 200).replace(/\n/g, '<br>')}${msg.message_content.length > 200 ? '...' : ''}
+          </div>
+        </div>
+      `;
+    });
+    threadHTML += '</div>';
+  }
+  
+  // Approval section if needed
+  let approvalHTML = '';
+  if (requiresApproval && askingPrice) {
+    approvalHTML = `
+      <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:2px solid #f59e0b;padding:25px;border-radius:12px;margin:25px 0;">
+        <h3 style="margin:0 0 15px 0;color:#92400e;font-size:20px;">🎯 ESCROW PAYMENT APPROVAL REQUIRED</h3>
+        <div style="background:white;padding:20px;border-radius:8px;margin:15px 0;">
+          <p style="margin:0 0 10px 0;color:#334155;"><strong>💰 Amount:</strong> $${askingPrice} USD</p>
+          <p style="margin:0 0 10px 0;color:#334155;"><strong>👤 Buyer:</strong> ${buyerName} (${buyerEmail})</p>
+          <p style="margin:0 0 10px 0;color:#334155;"><strong>🌐 Domain:</strong> ${domainName}</p>
+          <p style="margin:0;color:#334155;"><strong>📋 Status:</strong> <span style="color:#f59e0b;font-weight:600;">Pending Your Approval</span></p>
+        </div>
+        <div style="text-align:center;margin:20px 0;">
+          <a href="${dashboardUrl}/dashboard/escrow-approvals" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);">
+            ✅ APPROVE & SEND ESCROW LINK
+          </a>
+          <a href="${dashboardUrl}/dashboard/escrow-approvals?action=decline" style="display:inline-block;padding:14px 32px;background:#dc2626;color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;margin-left:10px;">
+            ❌ Decline
+          </a>
+        </div>
+        <p style="text-align:center;color:#92400e;font-size:14px;margin:15px 0 0 0;">
+          ⏳ Buyer is waiting! Please approve within 24 hours to maintain interest.
+        </p>
+      </div>
+    `;
+  }
   
   const htmlContent = `
 <!DOCTYPE html>
@@ -524,26 +583,31 @@ async function notifyAutoResponse({
 <body>
   <div class="container">
     <div class="header">
-      <h2>✅ Auto-Reply Sent Successfully!</h2>
+      <h2>${requiresApproval ? '🔔 APPROVAL REQUIRED!' : '✅ Auto-Reply Sent Successfully!'}</h2>
       <p>Campaign: <strong>${campaignName}</strong></p>
       <p>Domain: <strong>${domainName}</strong></p>
+      ${requiresApproval ? `<p style="background:rgba(255,255,255,0.2);padding:10px;border-radius:6px;margin-top:10px;">💰 Price: $${askingPrice} USD</p>` : ''}
     </div>
     
     <div class="content">
+      ${requiresApproval ? '' : `
       <div class="success-badge">
         <span class="success-icon">✅</span>
         <div>
           <strong>Automated Response</strong> - AI has successfully replied to this buyer. Auto-response is ON.
         </div>
       </div>
+      `}
+      
+      ${approvalHTML}
       
       <div class="message-box">
         <div class="label">
           <span>👤</span>
-          <span>Buyer's Message</span>
+          <span>Latest Buyer Message</span>
         </div>
         <div style="color: #64748b; font-size: 14px; margin: 8px 0;">
-          From: <strong style="color: #059669;">${buyerEmail}</strong>
+          From: <strong style="color: #059669;">${buyerName} &lt;${buyerEmail}&gt;</strong>
         </div>
         <div class="message-content">
           ${buyerMessage.replace(/\n/g, '<br>')}
@@ -555,21 +619,26 @@ async function notifyAutoResponse({
       <div class="ai-response">
         <div class="label">
           <span>🤖</span>
-          <span>AI Response (Already Sent)</span>
+          <span>AI Response (${requiresApproval ? 'Sent with Pending Message' : 'Already Sent'})</span>
         </div>
         <div class="response-content">
           ${aiResponse.replace(/\n/g, '<br>')}
         </div>
       </div>
       
+      ${threadHTML}
+      
       <div class="button-container">
-        <a href="${dashboardUrl}/dashboard?campaignId=${campaignId}&view=conversations" class="button">
+        <a href="${dashboardUrl}/dashboard?campaignId=${campaignId}&view=conversations&buyer=${encodeURIComponent(buyerEmail)}" class="button">
           💬 View Full Conversation
         </a>
       </div>
       
       <p class="note">
-        📊 This is a confirmation notification. The AI response has been automatically sent to the buyer.
+        ${requiresApproval ? 
+          '⏳ <strong>Action Required:</strong> Please review and approve the escrow link request above.' : 
+          '📊 This is a confirmation notification. The AI response has been automatically sent to the buyer.'
+        }
       </p>
     </div>
     

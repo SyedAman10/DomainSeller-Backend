@@ -322,5 +322,206 @@ router.put('/campaign/:campaignId/settings', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/escrow/approvals/pending
+ * Get all pending escrow approval requests
+ */
+router.get('/approvals/pending', async (req, res) => {
+  console.log('📋 Fetching pending escrow approvals...');
+  
+  try {
+    const { userId } = req.query;
+    
+    let queryText = `
+      SELECT 
+        ea.*,
+        c.campaign_name,
+        u.username as seller_username
+      FROM escrow_approvals ea
+      LEFT JOIN campaigns c ON ea.campaign_id = c.campaign_id
+      LEFT JOIN users u ON ea.user_id = u.id
+      WHERE ea.status = 'pending'
+    `;
+    
+    const queryParams = [];
+    
+    if (userId) {
+      queryText += ` AND ea.user_id = $1`;
+      queryParams.push(userId);
+    }
+    
+    queryText += ` ORDER BY ea.created_at DESC`;
+    
+    const result = await query(queryText, queryParams);
+    
+    res.json({
+      success: true,
+      approvals: result.rows,
+      count: result.rows.length
+    });
+  } catch (error) {
+    console.error('Error fetching approvals:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch approvals',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/escrow/approvals/:id/approve
+ * Approve an escrow request and generate payment link
+ */
+router.post('/approvals/:id/approve', async (req, res) => {
+  console.log(`✅ Approving escrow request ${req.params.id}...`);
+  
+  try {
+    const { id } = req.params;
+    const { approvedBy } = req.body;
+    
+    // Get approval request
+    const approval = await query(
+      'SELECT * FROM escrow_approvals WHERE id = $1',
+      [id]
+    );
+    
+    if (approval.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Approval request not found'
+      });
+    }
+    
+    const request = approval.rows[0];
+    
+    if (request.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        error: `Request already ${request.status}`
+      });
+    }
+    
+    // Create escrow transaction
+    const { createEscrowTransaction } = require('../services/escrowService');
+    const { sendEmail } = require('../services/emailService');
+    
+    const escrowResult = await createEscrowTransaction({
+      domainName: request.domain_name,
+      buyerEmail: request.buyer_email,
+      buyerName: request.buyer_name,
+      sellerEmail: request.seller_email,
+      sellerName: request.seller_name,
+      amount: request.amount,
+      currency: request.currency,
+      campaignId: request.campaign_id,
+      userId: request.user_id,
+      feePayer: request.fee_payer
+    });
+    
+    if (escrowResult.success) {
+      // Update approval status
+      await query(
+        `UPDATE escrow_approvals 
+         SET status = 'approved',
+             approved_at = NOW(),
+             approved_by = $1,
+             escrow_transaction_id = $2,
+             updated_at = NOW()
+         WHERE id = $3`,
+        [approvedBy, escrowResult.transactionId || 'manual', id]
+      );
+      
+      // Send escrow link to buyer
+      const escrowSection = escrowResult.isManual ?
+        `Hi ${request.buyer_name},\n\n` +
+        `Great news! Your payment link is ready.\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `💳 **SECURE PAYMENT INSTRUCTIONS**\n\n` +
+        `Domain: ${request.domain_name}\n` +
+        `Price: $${request.amount} ${request.currency}\n` +
+        `Fees: Paid by ${request.fee_payer}\n\n` +
+        `🔗 **Escrow.com Link:** ${escrowResult.escrowUrl}\n\n` +
+        `I'll create the transaction on Escrow.com and you'll receive payment instructions within 24 hours.\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+        :
+        `Hi ${request.buyer_name},\n\n` +
+        `Great news! Your secure payment link is ready.\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `💳 **SECURE PAYMENT LINK**\n\n` +
+        `🔗 ${escrowResult.escrowUrl}\n\n` +
+        `💰 Amount: $${request.amount} ${request.currency}\n` +
+        `🛡️ Protected by Escrow.com\n` +
+        `📋 Escrow fees paid by ${request.fee_payer}\n\n` +
+        `Click the link above to complete your secure payment.\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+      
+      await sendEmail({
+        to: request.buyer_email,
+        subject: `Payment Link Ready: ${request.domain_name}`,
+        html: escrowSection.replace(/\n/g, '<br>'),
+        text: escrowSection,
+        tags: [`campaign-${request.campaign_id}`, 'escrow-approved', 'payment-link']
+      });
+      
+      console.log('✅ Approval complete and email sent to buyer');
+      
+      res.json({
+        success: true,
+        message: 'Escrow request approved and payment link sent',
+        escrowUrl: escrowResult.escrowUrl,
+        transactionId: escrowResult.transactionId
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create escrow transaction',
+        message: escrowResult.message
+      });
+    }
+  } catch (error) {
+    console.error('Error approving request:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to approve request',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/escrow/approvals/:id/decline
+ * Decline an escrow request
+ */
+router.post('/approvals/:id/decline', async (req, res) => {
+  console.log(`❌ Declining escrow request ${req.params.id}...`);
+  
+  try {
+    const { id } = req.params;
+    const { declinedBy, notes } = req.body;
+    
+    await query(
+      `UPDATE escrow_approvals 
+       SET status = 'declined',
+           notes = $1,
+           updated_at = NOW()
+       WHERE id = $2 AND status = 'pending'`,
+      [notes || 'Declined by admin', id]
+    );
+    
+    res.json({
+      success: true,
+      message: 'Escrow request declined'
+    });
+  } catch (error) {
+    console.error('Error declining request:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to decline request',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;
 

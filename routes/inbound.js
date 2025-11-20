@@ -232,89 +232,59 @@ router.post('/mailgun', async (req, res) => {
     let responseText = aiResponse.reply;
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // ESCROW INTEGRATION - Generate payment link if requested
+    // ESCROW INTEGRATION - Require admin approval before sending payment link
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    let requiresApproval = false;
+    let approvalMessage = '';
+    
     if (intent.wantsPaymentLink || intent.isReady) {
-      console.log('💰 Buyer wants payment link - generating escrow transaction...');
+      console.log('💰 Buyer wants payment link - ADMIN APPROVAL REQUIRED');
       
+      requiresApproval = true;
+      
+      // Add approval message to response
+      approvalMessage = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `⏳ **PAYMENT LINK PENDING**\n\n` +
+        `Thank you for your interest! I'm preparing the secure escrow payment link for you. ` +
+        `You'll receive it within a few hours. If you have any questions in the meantime, feel free to ask!\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+      
+      responseText += approvalMessage;
+      console.log('⏳ Escrow link requires admin approval - not generating yet');
+      
+      // Store approval request
       try {
-        // Get campaign pricing info - check multiple sources
+        // Get campaign pricing info
         const askingPrice = campaign.asking_price || campaign.minimum_price || campaign.domain_value;
         
-        console.log(`💵 Price lookup:`);
-        console.log(`   asking_price: ${campaign.asking_price || 'not set'}`);
-        console.log(`   minimum_price: ${campaign.minimum_price || 'not set'}`);
-        console.log(`   domain_value: ${campaign.domain_value || 'not set'}`);
-        console.log(`   → Using: $${askingPrice || 'NONE'}`);
-        
         if (askingPrice) {
-          const escrowResult = await createEscrowTransaction({
-            domainName: campaign.domain_name,
-            buyerEmail: buyerEmail,
-            buyerName: buyerName,
-            sellerEmail: sellerEmail,
-            sellerName: sellerName,
-            amount: askingPrice,
-            currency: 'USD',
-            campaignId: campaign.campaign_id,
-            userId: campaign.user_id,
-            feePayer: campaign.escrow_fee_payer || 'buyer'
-          });
-
-          if (escrowResult.success) {
-            console.log('✅ Escrow link generated successfully!');
+            // Store pending approval in database
+            await query(
+              `INSERT INTO escrow_approvals 
+                (campaign_id, buyer_email, buyer_name, domain_name, amount, currency, seller_email, seller_name, fee_payer, status, user_id, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, NOW())
+               RETURNING id`,
+              [
+                campaign.campaign_id,
+                buyerEmail,
+                buyerName,
+                campaign.domain_name,
+                askingPrice,
+                'USD',
+                sellerEmail,
+                sellerName,
+                campaign.escrow_fee_payer || 'buyer',
+                campaign.user_id
+              ]
+            );
             
-            // Check if it's manual or API-generated escrow
-            let escrowSection;
-            
-            if (escrowResult.isManual) {
-              // Manual escrow - provide detailed instructions
-              escrowSection = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-                `💳 **SECURE PAYMENT INSTRUCTIONS**\n\n` +
-                `I'll set up the escrow transaction for ${campaign.domain_name}:\n\n` +
-                `📋 **Transaction Details:**\n` +
-                `   • Domain: ${escrowResult.domainName}\n` +
-                `   • Price: $${escrowResult.amount} ${escrowResult.currency}\n` +
-                `   • Buyer: ${escrowResult.buyerEmail}\n` +
-                `   • Seller: ${escrowResult.sellerEmail}\n` +
-                `   • Fees: Paid by ${escrowResult.feePayer}\n\n` +
-                `🔗 **Escrow.com Link:** ${escrowResult.escrowUrl}\n\n` +
-                `I'll create the escrow transaction on Escrow.com and send you the payment link within 24 hours. ` +
-                `You'll receive an email from Escrow.com with instructions to complete the payment.\n\n` +
-                `🛡️ Your payment will be held securely by Escrow.com until you confirm receipt of the domain.\n` +
-                `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-            } else {
-              // API-generated escrow with direct payment link
-              escrowSection = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-                `💳 **SECURE PAYMENT LINK**\n\n` +
-                `To complete your purchase securely through Escrow.com:\n\n` +
-                `🔗 ${escrowResult.escrowUrl}\n\n` +
-                `💰 Amount: $${escrowResult.amount} ${escrowResult.currency}\n` +
-                `🛡️ Protected by Escrow.com\n` +
-                `${escrowResult.feePayer === 'buyer' ? '📋 Escrow fees paid by buyer' : 
-                  escrowResult.feePayer === 'seller' ? '📋 Escrow fees paid by seller' : 
-                  '📋 Escrow fees split 50/50'}\n\n` +
-                `Escrow.com ensures safe transfer - your payment is protected until you receive the domain.\n` +
-                `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-            }
-
-            responseText += escrowSection;
-            console.log('📧 Escrow payment instructions added to response');
+            console.log('✅ Escrow approval request stored in database');
           } else {
-            console.warn('⚠️  Failed to generate escrow link');
+            console.warn('⚠️  No pricing info available');
           }
-        } else {
-          console.warn('⚠️  No pricing info available - cannot generate escrow link');
-          console.warn('   Please set asking_price on campaign or value on domain');
-          
-          // Add a note asking buyer to confirm price first
-          responseText += `\n\nTo proceed with payment, could you confirm the price you'd like to offer? ` +
-            `Once we agree on the price, I'll send you a secure escrow payment link.`;
+        } catch (error) {
+          console.error('❌ Error storing escrow approval:', error);
         }
-      } catch (error) {
-        console.error('❌ Error generating escrow link:', error);
-        // Continue without escrow link
-      }
     }
 
     const autoResponseEnabled = campaign.auto_response_enabled !== false; // Default to true if null
@@ -359,19 +329,35 @@ router.post('/mailgun', async (req, res) => {
 
       console.log('✅ AI response sent successfully!');
 
-      // Send notification to user if email provided
+      // ALWAYS send notification to admin with full conversation thread
       if (notificationEmail) {
-        console.log(`📧 Sending notification to ${notificationEmail}...`);
+        console.log(`📧 Sending FULL THREAD notification to admin ${notificationEmail}...`);
+        
+        // Get full conversation history
+        const fullThread = await query(
+          `SELECT direction, message_content, received_at, ai_generated
+           FROM email_conversations
+           WHERE campaign_id = $1 AND buyer_email = $2
+           ORDER BY received_at ASC`,
+          [campaign.campaign_id, buyerEmail]
+        );
+        
         await notifyAutoResponse({
           notificationEmail,
           campaignName: campaign.campaign_name,
           domainName: campaign.domain_name,
           buyerEmail,
+          buyerName,
           buyerMessage: messageContent,
           aiResponse: responseText,
-          campaignId: campaign.campaign_id
+          campaignId: campaign.campaign_id,
+          conversationThread: fullThread.rows,
+          requiresApproval: requiresApproval,
+          askingPrice: campaign.asking_price || campaign.minimum_price || campaign.domain_value
         });
-        console.log('✅ Notification sent!');
+        console.log('✅ Admin notification with full thread sent!');
+      } else {
+        console.warn('⚠️  No notification email configured - admin won\'t be notified!');
       }
 
       console.log('════════════════════════════════════════════════════════════\n');
