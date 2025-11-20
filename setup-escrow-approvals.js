@@ -87,11 +87,13 @@ async function setupEscrowApprovals() {
     console.log('✅ SETUP COMPLETE!');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('\nThe escrow_approvals table is ready to use!');
+    console.log('\n✅ Notifications will automatically use your account email!');
     console.log('\nNext steps:');
-    console.log('1. Set notification email on your campaigns:');
-    console.log('   UPDATE campaigns SET notification_email = \'your-email@domain.com\';');
-    console.log('2. Restart your server: npm start');
-    console.log('3. Test by sending email requesting payment');
+    console.log('1. Restart your server: npm start');
+    console.log('2. Test by sending email requesting payment');
+    console.log('3. Check your email for approval notifications!');
+    console.log('\nNote: Notifications will be sent to the email in your users table.');
+    console.log('To use a different email, set notification_email on your campaigns.');
     console.log('\n');
 
   } catch (error) {

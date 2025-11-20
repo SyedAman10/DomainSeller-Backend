@@ -370,8 +370,174 @@ router.get('/approvals/pending', async (req, res) => {
 });
 
 /**
+ * GET /api/escrow/approvals/:id/approve
+ * Simple approval link (for email buttons)
+ */
+router.get('/approvals/:id/approve', async (req, res) => {
+  console.log(`✅ Approving escrow request ${req.params.id} (via GET)...`);
+  
+  try {
+    const { id } = req.params;
+    
+    // Get approval request
+    const approval = await query(
+      'SELECT * FROM escrow_approvals WHERE id = $1',
+      [id]
+    );
+    
+    if (approval.rows.length === 0) {
+      return res.status(404).send(`
+        <html>
+          <head><title>Not Found</title></head>
+          <body style="font-family:Arial;padding:50px;text-align:center;">
+            <h1>❌ Approval Request Not Found</h1>
+            <p>This approval request doesn't exist or has been removed.</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    const request = approval.rows[0];
+    
+    if (request.status !== 'pending') {
+      return res.send(`
+        <html>
+          <head><title>Already Processed</title></head>
+          <body style="font-family:Arial;padding:50px;text-align:center;">
+            <h1>ℹ️ Already ${request.status === 'approved' ? 'Approved' : 'Declined'}</h1>
+            <p>This request was already ${request.status} on ${new Date(request.updated_at).toLocaleString()}</p>
+            ${request.status === 'approved' && request.escrow_transaction_id ? 
+              `<p><strong>Transaction ID:</strong> ${request.escrow_transaction_id}</p>` : ''}
+          </body>
+        </html>
+      `);
+    }
+    
+    // Create escrow transaction
+    const { createEscrowTransaction } = require('../services/escrowService');
+    const { sendEmail } = require('../services/emailService');
+    
+    const escrowResult = await createEscrowTransaction({
+      domainName: request.domain_name,
+      buyerEmail: request.buyer_email,
+      buyerName: request.buyer_name,
+      sellerEmail: request.seller_email,
+      sellerName: request.seller_name,
+      amount: request.amount,
+      currency: request.currency,
+      campaignId: request.campaign_id,
+      userId: request.user_id,
+      feePayer: request.fee_payer
+    });
+    
+    if (escrowResult.success) {
+      // Update approval status
+      await query(
+        `UPDATE escrow_approvals 
+         SET status = 'approved',
+             approved_at = NOW(),
+             escrow_transaction_id = $1,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [escrowResult.transactionId || 'manual', id]
+      );
+      
+      // Send escrow link to buyer
+      const escrowSection = escrowResult.isManual ?
+        `Hi ${request.buyer_name},\n\n` +
+        `Great news! Your payment link is ready.\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `💳 SECURE PAYMENT INSTRUCTIONS\n\n` +
+        `Domain: ${request.domain_name}\n` +
+        `Price: $${request.amount} ${request.currency}\n` +
+        `Fees: Paid by ${request.fee_payer}\n\n` +
+        `🔗 Escrow.com Link: ${escrowResult.escrowUrl}\n\n` +
+        `I'll create the transaction on Escrow.com and you'll receive payment instructions within 24 hours.\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+        :
+        `Hi ${request.buyer_name},\n\n` +
+        `Great news! Your secure payment link is ready.\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `💳 SECURE PAYMENT LINK\n\n` +
+        `🔗 ${escrowResult.escrowUrl}\n\n` +
+        `💰 Amount: $${request.amount} ${request.currency}\n` +
+        `🛡️ Protected by Escrow.com\n` +
+        `📋 Escrow fees paid by ${request.fee_payer}\n\n` +
+        `Click the link above to complete your secure payment.\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+      
+      await sendEmail({
+        to: request.buyer_email,
+        subject: `Payment Link Ready: ${request.domain_name}`,
+        html: escrowSection.replace(/\n/g, '<br>'),
+        text: escrowSection,
+        tags: [`campaign-${request.campaign_id}`, 'escrow-approved', 'payment-link']
+      });
+      
+      console.log('✅ Approval complete and email sent to buyer');
+      
+      // Return success page
+      res.send(`
+        <html>
+          <head>
+            <title>Approved!</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+          </head>
+          <body style="font-family:Arial,sans-serif;padding:20px;text-align:center;background:#f1f5f9;">
+            <div style="max-width:600px;margin:50px auto;background:white;padding:40px;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,0.1);">
+              <div style="font-size:64px;margin-bottom:20px;">✅</div>
+              <h1 style="color:#10b981;margin:0 0 20px 0;">Approved!</h1>
+              <p style="color:#334155;font-size:18px;line-height:1.6;">
+                The escrow payment link has been sent to:<br>
+                <strong>${request.buyer_email}</strong>
+              </p>
+              <div style="background:#f8fafc;padding:20px;border-radius:8px;margin:30px 0;text-align:left;">
+                <h3 style="margin:0 0 15px 0;color:#1e40af;">Transaction Details:</h3>
+                <p style="margin:8px 0;color:#334155;"><strong>Domain:</strong> ${request.domain_name}</p>
+                <p style="margin:8px 0;color:#334155;"><strong>Amount:</strong> $${request.amount} ${request.currency}</p>
+                <p style="margin:8px 0;color:#334155;"><strong>Buyer:</strong> ${request.buyer_name}</p>
+                ${escrowResult.transactionId ? 
+                  `<p style="margin:8px 0;color:#334155;"><strong>Transaction ID:</strong> ${escrowResult.transactionId}</p>` : ''}
+                <p style="margin:8px 0;color:#334155;"><strong>Payment Link:</strong> <a href="${escrowResult.escrowUrl}" target="_blank">${escrowResult.escrowUrl}</a></p>
+              </div>
+              <p style="color:#64748b;font-size:14px;">
+                The buyer will receive an email with the payment link.<br>
+                You can close this window.
+              </p>
+            </div>
+          </body>
+        </html>
+      `);
+    } else {
+      res.status(500).send(`
+        <html>
+          <head><title>Error</title></head>
+          <body style="font-family:Arial;padding:50px;text-align:center;">
+            <h1>❌ Error Creating Escrow</h1>
+            <p>${escrowResult.message || 'Failed to create escrow transaction'}</p>
+            <p><a href="javascript:history.back()">Go Back</a></p>
+          </body>
+        </html>
+      `);
+    }
+  } catch (error) {
+    console.error('Error approving request:', error);
+    res.status(500).send(`
+      <html>
+        <head><title>Error</title></head>
+        <body style="font-family:Arial;padding:50px;text-align:center;">
+          <h1>❌ Error</h1>
+          <p>${error.message}</p>
+          <p><a href="javascript:history.back()">Go Back</a></p>
+        </body>
+      </html>
+    `);
+  }
+});
+
+/**
  * POST /api/escrow/approvals/:id/approve
- * Approve an escrow request and generate payment link
+ * Approve an escrow request and generate payment link (API version)
  */
 router.post('/approvals/:id/approve', async (req, res) => {
   console.log(`✅ Approving escrow request ${req.params.id}...`);
@@ -490,8 +656,84 @@ router.post('/approvals/:id/approve', async (req, res) => {
 });
 
 /**
+ * GET /api/escrow/approvals/:id/decline
+ * Decline link (for email buttons)
+ */
+router.get('/approvals/:id/decline', async (req, res) => {
+  console.log(`❌ Declining escrow request ${req.params.id} (via GET)...`);
+  
+  try {
+    const { id } = req.params;
+    const { reason } = req.query;
+    
+    const result = await query(
+      `UPDATE escrow_approvals 
+       SET status = 'declined',
+           notes = $1,
+           updated_at = NOW()
+       WHERE id = $2 AND status = 'pending'
+       RETURNING *`,
+      [reason || 'Declined by admin', id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.send(`
+        <html>
+          <head><title>Already Processed</title></head>
+          <body style="font-family:Arial;padding:50px;text-align:center;">
+            <h1>ℹ️ Already Processed</h1>
+            <p>This request has already been processed or doesn't exist.</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    const request = result.rows[0];
+    
+    res.send(`
+      <html>
+        <head>
+          <title>Declined</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+        </head>
+        <body style="font-family:Arial,sans-serif;padding:20px;text-align:center;background:#f1f5f9;">
+          <div style="max-width:600px;margin:50px auto;background:white;padding:40px;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,0.1);">
+            <div style="font-size:64px;margin-bottom:20px;">❌</div>
+            <h1 style="color:#dc2626;margin:0 0 20px 0;">Request Declined</h1>
+            <p style="color:#334155;font-size:18px;line-height:1.6;">
+              The escrow request has been declined.
+            </p>
+            <div style="background:#f8fafc;padding:20px;border-radius:8px;margin:30px 0;text-align:left;">
+              <p style="margin:8px 0;color:#334155;"><strong>Domain:</strong> ${request.domain_name}</p>
+              <p style="margin:8px 0;color:#334155;"><strong>Buyer:</strong> ${request.buyer_name} (${request.buyer_email})</p>
+              <p style="margin:8px 0;color:#334155;"><strong>Amount:</strong> $${request.amount} ${request.currency}</p>
+              ${reason ? `<p style="margin:8px 0;color:#334155;"><strong>Reason:</strong> ${reason}</p>` : ''}
+            </div>
+            <p style="color:#64748b;font-size:14px;">
+              No notification was sent to the buyer.<br>
+              You can close this window.
+            </p>
+          </div>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Error declining request:', error);
+    res.status(500).send(`
+      <html>
+        <head><title>Error</title></head>
+        <body style="font-family:Arial;padding:50px;text-align:center;">
+          <h1>❌ Error</h1>
+          <p>${error.message}</p>
+        </body>
+      </html>
+    `);
+  }
+});
+
+/**
  * POST /api/escrow/approvals/:id/decline
- * Decline an escrow request
+ * Decline an escrow request (API version)
  */
 router.post('/approvals/:id/decline', async (req, res) => {
   console.log(`❌ Declining escrow request ${req.params.id}...`);

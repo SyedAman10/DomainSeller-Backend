@@ -49,7 +49,7 @@ Body: Hi, I'm ready to purchase. Send me the payment link!
 **You should receive email with:**
 - Full conversation thread
 - Approval request
-- APPROVE / DECLINE buttons
+- **Clickable APPROVE / DECLINE buttons** (work directly from email!)
 
 ---
 

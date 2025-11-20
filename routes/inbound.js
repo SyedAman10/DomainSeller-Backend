@@ -259,7 +259,7 @@ router.post('/mailgun', async (req, res) => {
         
         if (askingPrice) {
             // Store pending approval in database
-            await query(
+            const approvalResult = await query(
               `INSERT INTO escrow_approvals 
                 (campaign_id, buyer_email, buyer_name, domain_name, amount, currency, seller_email, seller_name, fee_payer, status, user_id, created_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, NOW())
@@ -278,7 +278,22 @@ router.post('/mailgun', async (req, res) => {
               ]
             );
             
-            console.log('✅ Escrow approval request stored in database');
+            const approvalId = approvalResult.rows[0].id;
+            console.log(`✅ Escrow approval request stored (ID: ${approvalId})`);
+            
+            // Store approval ID for notification
+            requiresApproval = true;
+            approvalMessage = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+              `⏳ **PAYMENT LINK PENDING**\n\n` +
+              `Thank you for your interest! I'm preparing the secure escrow payment link for you. ` +
+              `You'll receive it within a few hours. If you have any questions in the meantime, feel free to ask!\n` +
+              `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+            
+            responseText = responseText.replace(approvalMessage, ''); // Remove old message
+            responseText += approvalMessage;
+            
+            // Pass approval ID to notification
+            intent.approvalId = approvalId;
           } else {
             console.warn('⚠️  No pricing info available');
           }
@@ -356,7 +371,8 @@ router.post('/mailgun', async (req, res) => {
           campaignId: campaign.campaign_id,
           conversationThread: fullThread.rows,
           requiresApproval: requiresApproval,
-          askingPrice: campaign.asking_price || campaign.minimum_price || campaign.domain_value
+          askingPrice: campaign.asking_price || campaign.minimum_price || campaign.domain_value,
+          approvalId: intent.approvalId || null
         });
         console.log('✅ Admin notification with full thread sent!');
       } else {

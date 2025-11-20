@@ -344,6 +344,7 @@ async function notifyAutoResponse({
   conversationThread = [],
   requiresApproval = false,
   askingPrice = null,
+  approvalId = null,
   dashboardUrl = 'https://3vltn.com'
 }) {
   const subject = requiresApproval ? 
@@ -387,14 +388,19 @@ async function notifyAutoResponse({
           <p style="margin:0 0 10px 0;color:#334155;"><strong>🌐 Domain:</strong> ${domainName}</p>
           <p style="margin:0;color:#334155;"><strong>📋 Status:</strong> <span style="color:#f59e0b;font-weight:600;">Pending Your Approval</span></p>
         </div>
-        <div style="text-align:center;margin:20px 0;">
-          <a href="${dashboardUrl}/dashboard/escrow-approvals" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);">
-            ✅ APPROVE & SEND ESCROW LINK
+        <div style="text-align:center;margin:30px 0;">
+          <a href="${dashboardUrl}/backend/escrow/approvals/${approvalId}/approve" 
+             style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);margin:10px;">
+            ✅ APPROVE & SEND PAYMENT LINK
           </a>
-          <a href="${dashboardUrl}/dashboard/escrow-approvals?action=decline" style="display:inline-block;padding:14px 32px;background:#dc2626;color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;margin-left:10px;">
-            ❌ Decline
+          <a href="${dashboardUrl}/backend/escrow/approvals/${approvalId}/decline" 
+             style="display:inline-block;padding:16px 40px;background:#dc2626;color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(220,38,38,0.3);margin:10px;">
+            ❌ DECLINE REQUEST
           </a>
         </div>
+        <p style="color:#64748b;font-size:13px;text-align:center;margin:10px 0;">
+          Click a button above to process this request
+        </p>
         <p style="text-align:center;color:#92400e;font-size:14px;margin:15px 0 0 0;">
           ⏳ Buyer is waiting! Please approve within 24 hours to maintain interest.
         </p>
