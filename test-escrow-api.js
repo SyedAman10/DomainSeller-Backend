@@ -25,7 +25,7 @@ async function testAuthentication() {
   
   try {
     const response = await axios.get(
-      `${ESCROW_API_URL}/customer`,
+      `${ESCROW_API_URL}/customer/me`,
       {
         auth: {
           username: ESCROW_EMAIL,
@@ -39,17 +39,28 @@ async function testAuthentication() {
 
     console.log('✅ Authentication successful!');
     console.log(`   Account: ${response.data.email || 'Unknown'}`);
-    console.log(`   Status: ${response.data.status || 'Active'}`);
+    console.log(`   Name: ${response.data.first_name || ''} ${response.data.last_name || ''}`);
+    if (response.data.id) {
+      console.log(`   Customer ID: ${response.data.id}`);
+    }
     console.log();
     return true;
   } catch (error) {
     console.error('❌ Authentication failed!');
     if (error.response) {
       console.error(`   Status: ${error.response.status}`);
-      console.error(`   Message: ${error.response.data?.error || error.message}`);
+      console.error(`   Error: ${error.response.data?.message || error.response.statusText}`);
+      if (error.response.data) {
+        console.error(`   Details: ${JSON.stringify(error.response.data, null, 2)}`);
+      }
     } else {
       console.error(`   Error: ${error.message}`);
     }
+    console.log();
+    console.log('💡 Troubleshooting:');
+    console.log('   1. Make sure your .env file has been updated');
+    console.log('   2. Verify your sandbox credentials at: https://www.escrow-sandbox.com');
+    console.log('   3. Check if API access is enabled for your account');
     console.log();
     return false;
   }
