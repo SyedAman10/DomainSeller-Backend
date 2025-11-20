@@ -94,11 +94,13 @@ const createEscrowTransaction = async (transactionData) => {
       parties: [
         {
           role: 'buyer',
-          customer: buyerEmail
+          customer: buyerEmail,
+          initiator: false  // Buyer is not initiating
         },
         {
           role: 'seller',
-          customer: sellerEmail
+          customer: sellerEmail,
+          initiator: true   // Seller initiates the transaction
         }
       ],
       currency: currency.toLowerCase(),

@@ -112,11 +112,13 @@ async function testCreateTransaction() {
     parties: [
       {
         role: 'buyer',
-        customer: 'buyer-test@example.com'
+        customer: 'buyer-test@example.com',
+        initiator: false
       },
       {
         role: 'seller',
-        customer: ESCROW_EMAIL
+        customer: ESCROW_EMAIL,
+        initiator: true
       }
     ],
     currency: 'usd',

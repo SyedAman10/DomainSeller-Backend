@@ -31,7 +31,7 @@ axios.get(`${ESCROW_API_URL}/customer/me`, {
 })
 ```
 
-#### 2. Fixed Customer Format
+#### 2. Fixed Customer Format & Added Initiator
 **Before:**
 ```javascript
 parties: [
@@ -50,10 +50,18 @@ parties: [
 parties: [
   {
     role: 'buyer',
-    customer: 'buyer@example.com'  // Just the email string
+    customer: 'buyer@example.com',  // Just the email string
+    initiator: false                 // Buyer doesn't initiate
+  },
+  {
+    role: 'seller',
+    customer: 'seller@example.com',
+    initiator: true                  // Seller initiates
   }
 ]
 ```
+
+**Note:** One party must be marked as `initiator: true` when the API user is not a party member.
 
 #### 3. Fixed Fee Structure
 **Before:**
@@ -199,8 +207,8 @@ This will now:
 ```javascript
 {
   parties: [
-    { role: 'buyer', customer: 'buyer@email.com' },
-    { role: 'seller', customer: 'seller@email.com' }
+    { role: 'buyer', customer: 'buyer@email.com', initiator: false },
+    { role: 'seller', customer: 'seller@email.com', initiator: true }
   ],
   currency: 'usd',  // lowercase
   description: 'Domain purchase',
