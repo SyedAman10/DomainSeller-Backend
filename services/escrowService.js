@@ -134,6 +134,63 @@ const createEscrowTransaction = async (transactionData) => {
       console.log(`🔑 Using API credentials: ${apiEmail}`);
       const authHeader = Buffer.from(`${apiEmail}:${apiKey}`).toString('base64');
       
+      // Step 1: Create/verify buyer and seller as customers in Escrow.com
+      console.log('👥 Creating customers in Escrow.com...');
+      
+      try {
+        // Create buyer customer
+        await axios.post(
+          `${ESCROW_API_URL}/customer`,
+          {
+            email: buyerEmail,
+            first_name: buyerName.split(' ')[0] || buyerName,
+            last_name: buyerName.split(' ').slice(1).join(' ') || 'Buyer'
+          },
+          {
+            headers: {
+              'Authorization': `Basic ${authHeader}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        console.log(`✅ Buyer customer created: ${buyerEmail}`);
+      } catch (error) {
+        // Customer might already exist, which is fine
+        if (error.response?.status === 422 || error.response?.status === 409) {
+          console.log(`ℹ️  Buyer customer already exists: ${buyerEmail}`);
+        } else {
+          console.warn(`⚠️  Could not create buyer customer: ${error.response?.data?.message || error.message}`);
+        }
+      }
+      
+      try {
+        // Create seller customer
+        await axios.post(
+          `${ESCROW_API_URL}/customer`,
+          {
+            email: sellerEmail,
+            first_name: sellerName.split(' ')[0] || sellerName,
+            last_name: sellerName.split(' ').slice(1).join(' ') || 'Seller'
+          },
+          {
+            headers: {
+              'Authorization': `Basic ${authHeader}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        console.log(`✅ Seller customer created: ${sellerEmail}`);
+      } catch (error) {
+        // Customer might already exist, which is fine
+        if (error.response?.status === 422 || error.response?.status === 409) {
+          console.log(`ℹ️  Seller customer already exists: ${sellerEmail}`);
+        } else {
+          console.warn(`⚠️  Could not create seller customer: ${error.response?.data?.message || error.message}`);
+        }
+      }
+      
+      console.log('✅ Customer verification complete');
+      
       response = await axios.post(
         `${ESCROW_API_URL}/transaction`,
         escrowData,
@@ -178,12 +235,17 @@ const createEscrowTransaction = async (transactionData) => {
     }
 
   } catch (error) {
-    console.error('❌ Error creating escrow transaction:', error.response?.data || error.message);
-    
-    // Fallback to manual escrow link
-    console.log('📝 Falling back to manual escrow link...');
-    return generateManualEscrowLink(transactionData);
-  }
+      console.error('❌ Error creating escrow transaction:', error.response?.data || error.message);
+      
+      // Log detailed error for debugging
+      if (error.response?.data?.errors) {
+        console.error('🔍 Detailed API errors:', JSON.stringify(error.response.data.errors, null, 2));
+      }
+      
+      // Fallback to manual escrow link
+      console.log('📝 Falling back to manual escrow link...');
+      return generateManualEscrowLink(transactionData);
+    }
 };
 
 /**

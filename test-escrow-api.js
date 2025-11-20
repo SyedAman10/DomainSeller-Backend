@@ -66,10 +66,47 @@ async function testAuthentication() {
   }
 }
 
+// Test 2: Create Customer (if needed)
+async function createTestCustomer(email, firstName, lastName) {
+  const authHeader = Buffer.from(`${ESCROW_EMAIL}:${ESCROW_API_KEY}`).toString('base64');
+  
+  try {
+    const response = await axios.post(
+      `${ESCROW_API_URL}/customer`,
+      {
+        email: email,
+        first_name: firstName,
+        last_name: lastName
+      },
+      {
+        headers: {
+          'Authorization': `Basic ${authHeader}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    console.log(`✅ Customer created: ${email}`);
+    return true;
+  } catch (error) {
+    if (error.response?.status === 422 || error.response?.status === 409) {
+      console.log(`ℹ️  Customer already exists: ${email}`);
+      return true;
+    }
+    console.warn(`⚠️  Could not create customer: ${error.response?.data?.message || error.message}`);
+    return false;
+  }
+}
+
 // Test 2: Create a Test Transaction
 async function testCreateTransaction() {
   console.log('TEST 2: Create Test Transaction');
   console.log('─'.repeat(60));
+  
+  // First, create customers
+  console.log('👥 Creating test customers...');
+  await createTestCustomer('buyer-test@example.com', 'John', 'Buyer');
+  await createTestCustomer(ESCROW_EMAIL, 'Test', 'Seller');
+  console.log();
   
   const testTransaction = {
     parties: [
