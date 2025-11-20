@@ -66,16 +66,18 @@ fees: [
 ]
 ```
 
-**After:**
+**After (Correct):**
 ```javascript
 fees: [
   {
     type: 'escrow',
-    amount: 35.00,  // Must specify amount
+    split: 1.0,  // Must specify split (1.0 = 100%, 0.5 = 50%)
     payer_customer: 'buyer@example.com'
   }
 ]
 ```
+
+**Note:** Use `split` not `amount`. Split represents percentage (0.0-1.0) of fees paid by each party.
 
 #### 4. Fixed Currency Format
 **Before:**
@@ -219,7 +221,7 @@ This will now:
       fees: [
         {
           type: 'escrow',
-          amount: 35.00,  // Required
+          split: 1.0,  // Required: 1.0 = 100%, 0.5 = 50%
           payer_customer: 'buyer@email.com'
         }
       ]
@@ -257,8 +259,38 @@ axios.request({
 |-------|-------|----------|
 | 405 | Wrong endpoint | Use `/customer/me` |
 | 422 | Invalid format | Check customer is email string |
-| 422 | Missing fee amount | Add `amount` to fees |
+| 422 | Missing/wrong fee field | Use `split` not `amount` (split must sum to 1.0) |
 | 401 | Auth failed | Check API key is correct |
+
+---
+
+## 💡 Understanding Fee Split
+
+The `split` field in fees represents the **percentage** (0.0 to 1.0) of escrow fees each party pays:
+
+- **`split: 1.0`** = Party pays 100% of fees
+- **`split: 0.5`** = Party pays 50% of fees
+- **Multiple fees** = Must sum to 1.0
+
+### Examples:
+
+**Buyer pays all fees:**
+```javascript
+fees: [{ type: 'escrow', split: 1.0, payer_customer: 'buyer@...' }]
+```
+
+**50/50 split:**
+```javascript
+fees: [
+  { type: 'escrow', split: 0.5, payer_customer: 'buyer@...' },
+  { type: 'escrow', split: 0.5, payer_customer: 'seller@...' }
+]
+```
+
+**Seller pays all fees:**
+```javascript
+fees: [{ type: 'escrow', split: 1.0, payer_customer: 'seller@...' }]
+```
 
 ---
 
@@ -268,9 +300,10 @@ All API format issues have been resolved! The integration now:
 
 ✅ Uses correct endpoints  
 ✅ Sends proper data format  
-✅ Includes all required fields  
+✅ Includes all required fields (with `split` for fees)  
 ✅ Handles sandbox/production URLs  
 ✅ Uses reliable authentication  
+✅ Supports buyer/seller/split fee payment options  
 
 **Ready to test transactions!** Run: `npm run test:escrow`
 

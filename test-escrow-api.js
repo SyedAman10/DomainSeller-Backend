@@ -101,7 +101,7 @@ async function testCreateTransaction() {
         fees: [
           {
             type: 'escrow',
-            amount: 35.00, // Escrow fee amount
+            split: 1.0, // Buyer pays 100% of escrow fees (1.0 = 100%)
             payer_customer: 'buyer-test@example.com'
           }
         ]

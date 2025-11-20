@@ -47,9 +47,40 @@ const createEscrowTransaction = async (transactionData) => {
     }
 
     // Use Escrow.com API to create transaction
-    // Calculate escrow fee (approximately 3.25% of transaction, min $25)
     const transactionAmount = parseFloat(amount);
-    const escrowFee = Math.max(25, transactionAmount * 0.0325);
+    
+    // Determine fee split based on feePayer
+    // split represents the percentage (0.0 to 1.0) each party pays
+    // For split fees, each party pays 0.5 (50%)
+    const feeSplits = [];
+    
+    if (feePayer === 'buyer') {
+      feeSplits.push({
+        type: 'escrow',
+        split: 1.0, // Buyer pays 100%
+        payer_customer: buyerEmail
+      });
+    } else if (feePayer === 'seller') {
+      feeSplits.push({
+        type: 'escrow',
+        split: 1.0, // Seller pays 100%
+        payer_customer: sellerEmail
+      });
+    } else {
+      // Split 50/50
+      feeSplits.push(
+        {
+          type: 'escrow',
+          split: 0.5, // Buyer pays 50%
+          payer_customer: buyerEmail
+        },
+        {
+          type: 'escrow',
+          split: 0.5, // Seller pays 50%
+          payer_customer: sellerEmail
+        }
+      );
+    }
     
     const escrowData = {
       parties: [
@@ -78,15 +109,7 @@ const createEscrowTransaction = async (transactionData) => {
               beneficiary_customer: sellerEmail
             }
           ],
-          fees: [
-            {
-              type: 'escrow',
-              amount: escrowFee,
-              payer_customer: feePayer === 'buyer' ? buyerEmail : 
-                              feePayer === 'seller' ? sellerEmail : 
-                              buyerEmail // default to buyer if split
-            }
-          ]
+          fees: feeSplits
         }
       ]
     };
