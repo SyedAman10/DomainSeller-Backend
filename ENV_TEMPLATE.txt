@@ -10,7 +10,12 @@ MAILGUN_API_KEY=xxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx
 MAILGUN_DOMAIN=your-domain.mailgun.org
 MAILGUN_FROM_EMAIL=admin@your-domain.mailgun.org
 
-# Escrow.com Integration (OPTIONAL - works without these)
+# Stripe Connect Integration (REQUIRED for payments)
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Escrow.com Integration (OPTIONAL - legacy, Stripe is preferred)
 ESCROW_API_URL=https://api.escrow.com/2017-09-01
 ESCROW_EMAIL=your-email@example.com
 ESCROW_API_KEY=your_escrow_api_key

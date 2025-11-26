@@ -12,6 +12,7 @@ const webhookRoutes = require('./routes/webhooks');
 const monitoringRoutes = require('./routes/monitoring');
 const inboundRoutes = require('./routes/inbound');
 const escrowRoutes = require('./routes/escrow');
+const stripeRoutes = require('./routes/stripe');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -93,6 +94,7 @@ app.use('/backend/webhooks', webhookRoutes);
 app.use('/backend/monitoring', monitoringRoutes);
 app.use('/backend/inbound', inboundRoutes);
 app.use('/backend/escrow', escrowRoutes);
+app.use('/backend/stripe', stripeRoutes);
 
 // Mailgun webhook routes (must be accessible without prefix for webhooks)
 app.use('/inbound', inboundRoutes);
@@ -100,6 +102,9 @@ app.use('/webhooks', webhookRoutes);
 
 // Escrow webhook route (must be accessible without prefix)
 app.use('/escrow', escrowRoutes);
+
+// Stripe webhook route (must be accessible without prefix)
+app.use('/stripe', stripeRoutes);
 
 // 404 handler
 app.use((req, res) => {

@@ -176,13 +176,13 @@ RULES FOR EVERY RESPONSE:
 
 ${customInstructions ? `CUSTOM INSTRUCTIONS:\n${customInstructions}` : ''}
 
-PAYMENT & ESCROW HANDLING - CRITICAL:
+PAYMENT & STRIPE HANDLING - CRITICAL:
 - If buyer asks about payment/how to pay: Simply acknowledge and confirm you're ready to help them proceed
 - NEVER say "I'll send you the payment link" or "I'll send it shortly" - the system adds it automatically!
 - Good response: "Great! Let's proceed with the transaction." or "Perfect! Ready to help you complete the purchase."
-- NEVER promise to send anything separately - the escrow link appears automatically below your response
-- If they mention "escrow", briefly confirm: "Yes, we use Escrow.com for security."
-- Keep it natural and brief - the escrow link is added automatically after your response
+- NEVER promise to send anything separately - the payment link appears automatically below your response
+- If they ask about payment security, briefly confirm: "Yes, we use Stripe for secure payments."
+- Keep it natural and brief - the payment link is added automatically after your response
 
 CRITICAL RULES:
 - Use buyer's name: ${buyerName}

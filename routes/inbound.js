@@ -232,7 +232,7 @@ router.post('/mailgun', async (req, res) => {
     let responseText = aiResponse.reply;
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // ESCROW INTEGRATION - Require admin approval before sending payment link
+    // STRIPE INTEGRATION - Require admin approval before sending payment link
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     let requiresApproval = false;
     let approvalMessage = '';
@@ -245,12 +245,12 @@ router.post('/mailgun', async (req, res) => {
       // Add approval message to response
       approvalMessage = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
         `⏳ **PAYMENT LINK PENDING**\n\n` +
-        `Thank you for your interest! I'm preparing the secure escrow payment link for you. ` +
+        `Thank you for your interest! I'm preparing your secure payment link. ` +
         `You'll receive it within a few hours. If you have any questions in the meantime, feel free to ask!\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
       
       responseText += approvalMessage;
-      console.log('⏳ Escrow link requires admin approval - not generating yet');
+      console.log('⏳ Stripe payment link requires admin approval - not generating yet');
       
       // Store approval request
       try {
@@ -260,9 +260,9 @@ router.post('/mailgun', async (req, res) => {
         if (askingPrice) {
             // Store pending approval in database
             const approvalResult = await query(
-              `INSERT INTO escrow_approvals 
-                (campaign_id, buyer_email, buyer_name, domain_name, amount, currency, seller_email, seller_name, fee_payer, status, user_id, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, NOW())
+              `INSERT INTO stripe_approvals 
+                (campaign_id, buyer_email, buyer_name, domain_name, amount, currency, seller_email, seller_name, status, user_id, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, NOW())
                RETURNING id`,
               [
                 campaign.campaign_id,
@@ -273,19 +273,18 @@ router.post('/mailgun', async (req, res) => {
                 'USD',
                 sellerEmail,
                 sellerName,
-                campaign.escrow_fee_payer || 'buyer',
                 campaign.user_id
               ]
             );
             
             const approvalId = approvalResult.rows[0].id;
-            console.log(`✅ Escrow approval request stored (ID: ${approvalId})`);
+            console.log(`✅ Stripe approval request stored (ID: ${approvalId})`);
             
             // Store approval ID for notification
             requiresApproval = true;
             approvalMessage = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
               `⏳ **PAYMENT LINK PENDING**\n\n` +
-              `Thank you for your interest! I'm preparing the secure escrow payment link for you. ` +
+              `Thank you for your interest! I'm preparing your secure payment link. ` +
               `You'll receive it within a few hours. If you have any questions in the meantime, feel free to ask!\n` +
               `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
             
@@ -298,7 +297,7 @@ router.post('/mailgun', async (req, res) => {
             console.warn('⚠️  No pricing info available');
           }
         } catch (error) {
-          console.error('❌ Error storing escrow approval:', error);
+          console.error('❌ Error storing Stripe approval:', error);
         }
     }
 

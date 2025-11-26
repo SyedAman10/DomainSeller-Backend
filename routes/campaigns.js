@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
 const { sendBatchEmails } = require('../services/emailService');
+const { addLandingPageLink } = require('../services/emailTemplates');
 
 // ============================================================
 // SPECIFIC ROUTES (must come BEFORE parameterized routes)
@@ -56,6 +57,25 @@ router.post('/send-batch', async (req, res) => {
     
     // Use the campaign_id string for all subsequent operations
     const actualCampaignId = campaign.rows[0].campaign_id;
+
+    // Check if landing page should be included
+    const includeLandingPage = campaign.rows[0].include_landing_page;
+    const landingPageUrl = campaign.rows[0].landing_page_url;
+
+    // Add landing page link to emails if enabled
+    if (includeLandingPage && landingPageUrl) {
+      console.log(`🌐 Adding landing page link to emails: ${landingPageUrl}`);
+      
+      emails = emails.map(email => {
+        if (email.html) {
+          email.html = addLandingPageLink(email.html, landingPageUrl, campaign.rows[0].domain_name, 'html');
+        }
+        if (email.text) {
+          email.text = addLandingPageLink(email.text, landingPageUrl, campaign.rows[0].domain_name, 'text');
+        }
+        return email;
+      });
+    }
 
     // Get batch limit from env or default to 10
     const batchLimit = parseInt(process.env.EMAIL_BATCH_LIMIT) || 10;
@@ -367,7 +387,9 @@ router.post('/replace', async (req, res) => {
       includePrice,
       maxEmailsPerDay,
       followUpSequence,
-      followUpDays
+      followUpDays,
+      includeLandingPage,
+      landingPageUrl
     } = req.body;
 
     // Validate required fields
@@ -401,8 +423,9 @@ router.post('/replace', async (req, res) => {
       `INSERT INTO campaigns 
         (campaign_id, user_id, domain_id, domain_name, campaign_name, email_tone, 
          include_price, max_emails_per_day, follow_up_sequence, follow_up_days, 
+         include_landing_page, landing_page_url,
          status, created_at, updated_at, total_emails_sent, total_emails_scheduled)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft', NOW(), NOW(), 0, 0)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'draft', NOW(), NOW(), 0, 0)
        RETURNING *`,
       [
         campaignId,
@@ -414,7 +437,9 @@ router.post('/replace', async (req, res) => {
         includePrice !== undefined ? includePrice : true,
         maxEmailsPerDay || 50,
         followUpSequence ? JSON.stringify(followUpSequence) : null,
-        followUpDays || 3
+        followUpDays || 3,
+        includeLandingPage || false,
+        landingPageUrl || null
       ]
     );
 
@@ -546,8 +571,9 @@ router.post('/', async (req, res) => {
       `INSERT INTO campaigns 
         (campaign_id, user_id, domain_id, domain_name, campaign_name, email_tone, 
          include_price, max_emails_per_day, follow_up_sequence, follow_up_days, 
+         include_landing_page, landing_page_url,
          status, created_at, updated_at, total_emails_sent, total_emails_scheduled)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft', NOW(), NOW(), 0, 0)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'draft', NOW(), NOW(), 0, 0)
        RETURNING *`,
       [
         campaignId,
@@ -559,7 +585,9 @@ router.post('/', async (req, res) => {
         includePrice !== undefined ? includePrice : true,
         maxEmailsPerDay || 50,
         followUpSequence ? JSON.stringify(followUpSequence) : null,
-        followUpDays || 3
+        followUpDays || 3,
+        includeLandingPage || false,
+        landingPageUrl || null
       ]
     );
 
