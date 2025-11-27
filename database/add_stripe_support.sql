@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS stripe_payments (
   id SERIAL PRIMARY KEY,
   payment_link_id VARCHAR(255) UNIQUE NOT NULL,
   payment_intent_id VARCHAR(255),
-  campaign_id INTEGER REFERENCES campaigns(campaign_id) ON DELETE CASCADE,
+  campaign_id VARCHAR(255) REFERENCES campaigns(campaign_id) ON DELETE CASCADE,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   stripe_account_id VARCHAR(255) NOT NULL,
   buyer_email VARCHAR(255) NOT NULL,
@@ -43,10 +43,14 @@ CREATE INDEX IF NOT EXISTS idx_stripe_payments_buyer ON stripe_payments(buyer_em
 CREATE INDEX IF NOT EXISTS idx_stripe_payments_status ON stripe_payments(status);
 CREATE INDEX IF NOT EXISTS idx_stripe_payments_payment_intent ON stripe_payments(payment_intent_id);
 
--- 3. Create stripe_approvals table (for approval workflow)
+-- Create indexes for stripe_approvals
+CREATE INDEX IF NOT EXISTS idx_stripe_approvals_campaign ON stripe_approvals(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_stripe_approvals_user ON stripe_approvals(user_id);
+CREATE INDEX IF NOT EXISTS idx_stripe_approvals_status ON stripe_approvals(status);
+CREATE INDEX IF NOT EXISTS idx_stripe_approvals_buyer ON stripe_approvals(buyer_email);
 CREATE TABLE IF NOT EXISTS stripe_approvals (
   id SERIAL PRIMARY KEY,
-  campaign_id INTEGER REFERENCES campaigns(campaign_id) ON DELETE CASCADE,
+  campaign_id VARCHAR(255) REFERENCES campaigns(campaign_id) ON DELETE CASCADE,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   buyer_email VARCHAR(255) NOT NULL,
   buyer_name VARCHAR(255) NOT NULL,
