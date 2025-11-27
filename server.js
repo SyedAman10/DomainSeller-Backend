@@ -32,7 +32,7 @@ app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
-    
+
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -49,6 +49,31 @@ app.use(cors({
   preflightContinue: false,
   optionsSuccessStatus: 204
 }));
+
+// CORS debugging middleware
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    console.log('🔍 CORS PREFLIGHT REQUEST DETECTED');
+    console.log(`   Origin: ${req.headers.origin}`);
+    console.log(`   Method: ${req.headers['access-control-request-method']}`);
+    console.log(`   Headers: ${req.headers['access-control-request-headers']}`);
+  }
+
+  // Log response headers being sent
+  const originalSend = res.send;
+  res.send = function (data) {
+    if (req.method === 'OPTIONS') {
+      console.log('📤 CORS PREFLIGHT RESPONSE HEADERS:');
+      console.log(`   Access-Control-Allow-Origin: ${res.getHeader('Access-Control-Allow-Origin')}`);
+      console.log(`   Access-Control-Allow-Methods: ${res.getHeader('Access-Control-Allow-Methods')}`);
+      console.log(`   Access-Control-Allow-Headers: ${res.getHeader('Access-Control-Allow-Headers')}`);
+    }
+    originalSend.call(this, data);
+  };
+
+  next();
+});
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -58,19 +83,21 @@ app.use((req, res, next) => {
   console.log('\n' + '='.repeat(60));
   console.log(`📥 ${req.method} ${req.path}`);
   console.log(`⏰ ${timestamp}`);
-  
+  console.log(`🌍 Origin: ${req.headers.origin || 'No origin header'}`);
+  console.log(`🔑 Host: ${req.headers.host}`);
+
   if (Object.keys(req.query).length > 0) {
     console.log('📋 Query:', JSON.stringify(req.query, null, 2));
   }
-  
+
   if (Object.keys(req.params).length > 0) {
     console.log('🎯 Params:', JSON.stringify(req.params, null, 2));
   }
-  
+
   if (req.body && Object.keys(req.body).length > 0) {
     console.log('📦 Body:', JSON.stringify(req.body, null, 2));
   }
-  
+
   console.log('='.repeat(60));
   next();
 });
@@ -118,7 +145,7 @@ app.use((req, res) => {
   console.error(`   Path: ${req.method} ${req.path}`);
   console.error(`   Origin: ${req.headers.origin}`);
   console.error(`   Full URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`);
-  
+
   res.status(404).json({
     error: 'Not Found',
     message: 'The requested endpoint does not exist',

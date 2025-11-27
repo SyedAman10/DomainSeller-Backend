@@ -21,11 +21,15 @@ const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
  */
 router.post('/connect', async (req, res) => {
   console.log('🔗 Initiating Stripe Connect onboarding...');
+  console.log('📍 Request received at /stripe/connect');
+  console.log('🌍 Origin:', req.headers.origin);
+  console.log('📦 Request Body:', JSON.stringify(req.body, null, 2));
 
   try {
     const { userId, email, country = 'US' } = req.body;
 
     if (!userId || !email) {
+      console.log('❌ Missing required fields: userId or email');
       return res.status(400).json({
         success: false,
         error: 'userId and email are required'
@@ -34,12 +38,12 @@ router.post('/connect', async (req, res) => {
 
     // Check if user already has a Stripe account
     const existingConfig = await getUserStripeConfig(userId);
-    
+
     if (existingConfig.accountId) {
       // Refresh the onboarding link for existing account
       console.log(`ℹ️  User already has Stripe account: ${existingConfig.accountId}`);
       const refreshed = await refreshAccountLink(existingConfig.accountId);
-      
+
       return res.json({
         success: true,
         accountId: existingConfig.accountId,
@@ -305,7 +309,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       case 'account.updated':
         const account = event.data.object;
         console.log(`📝 Account updated: ${account.id}`);
-        
+
         // Check if account is now fully onboarded
         if (account.details_submitted && account.charges_enabled && account.payouts_enabled) {
           // Update user status in database
@@ -340,10 +344,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
  */
 router.get('/approvals/pending', async (req, res) => {
   console.log('📋 Fetching pending Stripe approvals...');
-  
+
   try {
     const { userId } = req.query;
-    
+
     let queryText = `
       SELECT 
         sa.*,
@@ -354,18 +358,18 @@ router.get('/approvals/pending', async (req, res) => {
       LEFT JOIN users u ON sa.user_id = u.id
       WHERE sa.status = 'pending'
     `;
-    
+
     const queryParams = [];
-    
+
     if (userId) {
       queryText += ` AND sa.user_id = $1`;
       queryParams.push(userId);
     }
-    
+
     queryText += ` ORDER BY sa.created_at DESC`;
-    
+
     const result = await query(queryText, queryParams);
-    
+
     res.json({
       success: true,
       approvals: result.rows,
@@ -387,47 +391,47 @@ router.get('/approvals/pending', async (req, res) => {
  */
 router.post('/approvals/:id/approve', async (req, res) => {
   console.log(`✅ Approving Stripe request ${req.params.id}...`);
-  
+
   try {
     const { id } = req.params;
     const { approvedBy } = req.body;
-    
+
     // Get approval request
     const approval = await query(
       'SELECT * FROM stripe_approvals WHERE id = $1',
       [id]
     );
-    
+
     if (approval.rows.length === 0) {
       return res.status(404).json({
         success: false,
         error: 'Approval request not found'
       });
     }
-    
+
     const request = approval.rows[0];
-    
+
     if (request.status !== 'pending') {
       return res.status(400).json({
         success: false,
         error: `Request already ${request.status}`
       });
     }
-    
+
     // Get seller's Stripe account
     const userConfig = await getUserStripeConfig(request.user_id);
-    
+
     if (!userConfig.enabled || !userConfig.accountId) {
       return res.status(400).json({
         success: false,
         error: 'Seller has not connected their Stripe account'
       });
     }
-    
+
     // Create payment link
     const { createPaymentLink } = require('../services/stripeService');
     const { sendEmail } = require('../services/emailService');
-    
+
     const paymentResult = await createPaymentLink({
       domainName: request.domain_name,
       amount: request.amount,
@@ -438,7 +442,7 @@ router.post('/approvals/:id/approve', async (req, res) => {
       campaignId: request.campaign_id,
       userId: request.user_id
     });
-    
+
     if (paymentResult.success) {
       // Update approval status
       await query(
@@ -451,9 +455,9 @@ router.post('/approvals/:id/approve', async (req, res) => {
          WHERE id = $3`,
         [approvedBy, paymentResult.paymentLinkId, id]
       );
-      
+
       // Send payment link to buyer
-      const emailContent = 
+      const emailContent =
         `Hi ${request.buyer_name},\n\n` +
         `Great news! Your secure payment link is ready.\n\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
@@ -464,7 +468,7 @@ router.post('/approvals/:id/approve', async (req, res) => {
         `📋 Domain: ${request.domain_name}\n\n` +
         `Click the link above to complete your secure payment with your credit or debit card.\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-      
+
       await sendEmail({
         to: request.buyer_email,
         subject: `Payment Link Ready: ${request.domain_name}`,
@@ -472,9 +476,9 @@ router.post('/approvals/:id/approve', async (req, res) => {
         text: emailContent,
         tags: [`campaign-${request.campaign_id}`, 'stripe-approved', 'payment-link']
       });
-      
+
       console.log('✅ Approval complete and email sent to buyer');
-      
+
       res.json({
         success: true,
         message: 'Stripe payment link created and sent',
@@ -503,16 +507,16 @@ router.post('/approvals/:id/approve', async (req, res) => {
  */
 router.get('/approvals/:id/approve', async (req, res) => {
   console.log(`✅ Approving Stripe request ${req.params.id} (via GET)...`);
-  
+
   try {
     const { id } = req.params;
-    
+
     // Get approval request
     const approval = await query(
       'SELECT * FROM stripe_approvals WHERE id = $1',
       [id]
     );
-    
+
     if (approval.rows.length === 0) {
       return res.status(404).send(`
         <html>
@@ -524,9 +528,9 @@ router.get('/approvals/:id/approve', async (req, res) => {
         </html>
       `);
     }
-    
+
     const request = approval.rows[0];
-    
+
     if (request.status !== 'pending') {
       return res.send(`
         <html>
@@ -534,16 +538,16 @@ router.get('/approvals/:id/approve', async (req, res) => {
           <body style="font-family:Arial;padding:50px;text-align:center;">
             <h1>ℹ️ Already ${request.status === 'approved' ? 'Approved' : 'Declined'}</h1>
             <p>This request was already ${request.status} on ${new Date(request.updated_at).toLocaleString()}</p>
-            ${request.status === 'approved' && request.payment_link_id ? 
-              `<p><strong>Payment Link ID:</strong> ${request.payment_link_id}</p>` : ''}
+            ${request.status === 'approved' && request.payment_link_id ?
+          `<p><strong>Payment Link ID:</strong> ${request.payment_link_id}</p>` : ''}
           </body>
         </html>
       `);
     }
-    
+
     // Get seller's Stripe account
     const userConfig = await getUserStripeConfig(request.user_id);
-    
+
     if (!userConfig.enabled || !userConfig.accountId) {
       return res.status(400).send(`
         <html>
@@ -555,11 +559,11 @@ router.get('/approvals/:id/approve', async (req, res) => {
         </html>
       `);
     }
-    
+
     // Create payment link
     const { createPaymentLink } = require('../services/stripeService');
     const { sendEmail } = require('../services/emailService');
-    
+
     const paymentResult = await createPaymentLink({
       domainName: request.domain_name,
       amount: request.amount,
@@ -570,7 +574,7 @@ router.get('/approvals/:id/approve', async (req, res) => {
       campaignId: request.campaign_id,
       userId: request.user_id
     });
-    
+
     if (paymentResult.success) {
       // Update approval status
       await query(
@@ -582,9 +586,9 @@ router.get('/approvals/:id/approve', async (req, res) => {
          WHERE id = $2`,
         [paymentResult.paymentLinkId, id]
       );
-      
+
       // Send payment link to buyer
-      const emailContent = 
+      const emailContent =
         `Hi ${request.buyer_name},\n\n` +
         `Great news! Your secure payment link is ready.\n\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
@@ -595,7 +599,7 @@ router.get('/approvals/:id/approve', async (req, res) => {
         `📋 Domain: ${request.domain_name}\n\n` +
         `Click the link above to complete your secure payment with your credit or debit card.\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-      
+
       await sendEmail({
         to: request.buyer_email,
         subject: `Payment Link Ready: ${request.domain_name}`,
@@ -603,9 +607,9 @@ router.get('/approvals/:id/approve', async (req, res) => {
         text: emailContent,
         tags: [`campaign-${request.campaign_id}`, 'stripe-approved', 'payment-link']
       });
-      
+
       console.log('✅ Approval complete and email sent to buyer');
-      
+
       // Return success page
       res.send(`
         <html>
@@ -669,11 +673,11 @@ router.get('/approvals/:id/approve', async (req, res) => {
  */
 router.post('/approvals/:id/decline', async (req, res) => {
   console.log(`❌ Declining Stripe request ${req.params.id}...`);
-  
+
   try {
     const { id } = req.params;
     const { declinedBy, notes } = req.body;
-    
+
     await query(
       `UPDATE stripe_approvals 
        SET status = 'declined',
@@ -682,7 +686,7 @@ router.post('/approvals/:id/decline', async (req, res) => {
        WHERE id = $2 AND status = 'pending'`,
       [notes || 'Declined by admin', id]
     );
-    
+
     res.json({
       success: true,
       message: 'Stripe payment request declined'
@@ -703,11 +707,11 @@ router.post('/approvals/:id/decline', async (req, res) => {
  */
 router.get('/approvals/:id/decline', async (req, res) => {
   console.log(`❌ Declining Stripe request ${req.params.id} (via GET)...`);
-  
+
   try {
     const { id } = req.params;
     const { reason } = req.query;
-    
+
     const result = await query(
       `UPDATE stripe_approvals 
        SET status = 'declined',
@@ -717,7 +721,7 @@ router.get('/approvals/:id/decline', async (req, res) => {
        RETURNING *`,
       [reason || 'Declined by admin', id]
     );
-    
+
     if (result.rows.length === 0) {
       return res.send(`
         <html>
@@ -729,9 +733,9 @@ router.get('/approvals/:id/decline', async (req, res) => {
         </html>
       `);
     }
-    
+
     const request = result.rows[0];
-    
+
     res.send(`
       <html>
         <head>
