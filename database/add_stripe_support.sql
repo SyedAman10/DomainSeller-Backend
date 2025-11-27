@@ -43,11 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_stripe_payments_buyer ON stripe_payments(buyer_em
 CREATE INDEX IF NOT EXISTS idx_stripe_payments_status ON stripe_payments(status);
 CREATE INDEX IF NOT EXISTS idx_stripe_payments_payment_intent ON stripe_payments(payment_intent_id);
 
--- Create indexes for stripe_approvals
-CREATE INDEX IF NOT EXISTS idx_stripe_approvals_campaign ON stripe_approvals(campaign_id);
-CREATE INDEX IF NOT EXISTS idx_stripe_approvals_user ON stripe_approvals(user_id);
-CREATE INDEX IF NOT EXISTS idx_stripe_approvals_status ON stripe_approvals(status);
-CREATE INDEX IF NOT EXISTS idx_stripe_approvals_buyer ON stripe_approvals(buyer_email);
+
 CREATE TABLE IF NOT EXISTS stripe_approvals (
   id SERIAL PRIMARY KEY,
   campaign_id VARCHAR(255) REFERENCES campaigns(campaign_id) ON DELETE CASCADE,
