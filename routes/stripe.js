@@ -72,6 +72,68 @@ router.post('/connect', async (req, res) => {
 });
 
 /**
+ * GET /api/stripe/connect/status
+ * Get user's Stripe account status (query parameter version for frontend compatibility)
+ * This endpoint supports: /backend/stripe/connect/status?userId=11
+ */
+router.get('/connect/status', async (req, res) => {
+  const { userId } = req.query;
+  console.log(`🔍 Checking Stripe connection status for user ${userId}...`);
+
+  try {
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId query parameter is required'
+      });
+    }
+
+    const config = await getUserStripeConfig(userId);
+
+    if (!config.accountId) {
+      return res.json({
+        success: true,
+        stripe: {
+          connected: false,
+          enabled: false,
+          accountId: null,
+          isComplete: false
+        }
+      });
+    }
+
+    // Check account status on Stripe
+    const status = await checkAccountStatus(config.accountId);
+
+    // If account is complete but not enabled in DB, enable it
+    if (status.isComplete && !config.enabled) {
+      await enableStripeForUser(userId, config.accountId);
+      config.enabled = true;
+    }
+
+    res.json({
+      success: true,
+      stripe: {
+        connected: true,
+        enabled: config.enabled,
+        accountId: config.accountId,
+        isComplete: status.isComplete,
+        chargesEnabled: status.chargesEnabled,
+        payoutsEnabled: status.payoutsEnabled,
+        requirements: status.requirements
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error verifying Stripe connection:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to verify Stripe connection',
+      message: error.message
+    });
+  }
+});
+
+/**
  * POST /api/stripe/refresh
  * Refresh onboarding link for existing account
  */
