@@ -43,7 +43,7 @@ const getLandingPageInsights = async (landingPageId, dateRange = '7d') => {
         AVG(session_duration) as avg_session_duration,
         SUM(CASE WHEN is_bounce THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) * 100 as bounce_rate,
         SUM(CASE WHEN converted THEN 1 ELSE 0 END) as total_conversions
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1 ${dateSQL}`,
       [landingPageId]
     );
@@ -58,7 +58,7 @@ const getLandingPageInsights = async (landingPageId, dateRange = '7d') => {
     // Top countries
     const countriesQuery = await query(
       `SELECT country, COUNT(*) as visits
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1 AND country IS NOT NULL ${dateSQL}
        GROUP BY country
        ORDER BY visits DESC
@@ -69,7 +69,7 @@ const getLandingPageInsights = async (landingPageId, dateRange = '7d') => {
     // Top referrers
     const referrersQuery = await query(
       `SELECT referrer_domain as source, COUNT(*) as visits
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1 AND referrer_domain IS NOT NULL ${dateSQL}
        GROUP BY referrer_domain
        ORDER BY visits DESC
@@ -124,7 +124,7 @@ const getVisitorTimeline = async (landingPageId, range = '7d') => {
         COUNT(*) as visits,
         COUNT(DISTINCT visitor_id) as unique_visitors,
         SUM(CASE WHEN converted THEN 1 ELSE 0 END) as conversions
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1
          AND visit_timestamp >= NOW() - INTERVAL '${numDays} days'
        GROUP BY DATE(visit_timestamp)
@@ -157,7 +157,7 @@ const getDeviceBreakdown = async (landingPageId) => {
     // Device types
     const devicesQuery = await query(
       `SELECT device_type, COUNT(*) as count
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1 AND device_type IS NOT NULL
        GROUP BY device_type`,
       [landingPageId]
@@ -173,7 +173,7 @@ const getDeviceBreakdown = async (landingPageId) => {
     // Browsers
     const browsersQuery = await query(
       `SELECT browser, COUNT(*) as count
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1 AND browser IS NOT NULL
        GROUP BY browser`,
       [landingPageId]
@@ -189,7 +189,7 @@ const getDeviceBreakdown = async (landingPageId) => {
     // Operating Systems
     const osQuery = await query(
       `SELECT os, COUNT(*) as count
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1 AND os IS NOT NULL
        GROUP BY os`,
       [landingPageId]
@@ -231,7 +231,7 @@ const getTrafficSources = async (landingPageId) => {
         utm_source,
         utm_medium,
         COUNT(*) as visit_count
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1
        GROUP BY referrer_domain, referrer_url, utm_source, utm_medium`,
       [landingPageId]
@@ -308,7 +308,7 @@ const getRealtimeVisitors = async (landingPageId) => {
     // Active now (last 5 minutes)
     const activeNowQuery = await query(
       `SELECT COUNT(DISTINCT session_id) as active
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1
          AND visit_timestamp >= NOW() - INTERVAL '5 minutes'`,
       [landingPageId]
@@ -317,7 +317,7 @@ const getRealtimeVisitors = async (landingPageId) => {
     // Last 24 hours
     const last24Query = await query(
       `SELECT COUNT(*) as visits
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1
          AND visit_timestamp >= NOW() - INTERVAL '24 hours'`,
       [landingPageId]
@@ -329,7 +329,7 @@ const getRealtimeVisitors = async (landingPageId) => {
         country,
         device_type as device,
         visit_timestamp as timestamp
-       FROM landing_page_visits
+       FROM landing_page_analytics
        WHERE landing_page_id = $1
        ORDER BY visit_timestamp DESC
        LIMIT 10`,
