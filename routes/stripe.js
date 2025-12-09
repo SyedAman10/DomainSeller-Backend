@@ -1213,6 +1213,149 @@ router.get('/dashboard/:userId', async (req, res) => {
 });
 
 /**
+ * GET /api/stripe/balance/:userId
+ * Get actual Stripe account balance from Stripe API
+ */
+router.get('/balance/:userId', async (req, res) => {
+  console.log(`💰 Fetching Stripe balance for user ${req.params.userId}...`);
+
+  try {
+    const { userId } = req.params;
+
+    // Get user's Stripe account
+    const stripeConfig = await getUserStripeConfig(userId);
+
+    if (!stripeConfig.accountId) {
+      return res.status(400).json({
+        success: false,
+        error: 'No Stripe account connected'
+      });
+    }
+
+    // Get balance from Stripe
+    const balance = await stripe.balance.retrieve({
+      stripeAccount: stripeConfig.accountId
+    });
+
+    // Get recent payouts
+    const payouts = await stripe.payouts.list({
+      limit: 10
+    }, {
+      stripeAccount: stripeConfig.accountId
+    });
+
+    // Get recent charges/payments
+    const charges = await stripe.charges.list({
+      limit: 10
+    }, {
+      stripeAccount: stripeConfig.accountId
+    });
+
+    // Format balances
+    const availableBalance = balance.available.map(b => ({
+      amount: b.amount / 100,
+      currency: b.currency.toUpperCase()
+    }));
+
+    const pendingBalance = balance.pending.map(b => ({
+      amount: b.amount / 100,
+      currency: b.currency.toUpperCase()
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        accountId: stripeConfig.accountId,
+        available: availableBalance,
+        pending: pendingBalance,
+        totalAvailable: availableBalance.reduce((sum, b) => sum + b.amount, 0),
+        totalPending: pendingBalance.reduce((sum, b) => sum + b.amount, 0),
+        recentPayouts: payouts.data.map(p => ({
+          id: p.id,
+          amount: p.amount / 100,
+          currency: p.currency.toUpperCase(),
+          status: p.status,
+          arrivalDate: new Date(p.arrival_date * 1000).toISOString(),
+          created: new Date(p.created * 1000).toISOString()
+        })),
+        recentCharges: charges.data.map(c => ({
+          id: c.id,
+          amount: c.amount / 100,
+          currency: c.currency.toUpperCase(),
+          status: c.status,
+          description: c.description,
+          customerEmail: c.billing_details?.email,
+          created: new Date(c.created * 1000).toISOString()
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching Stripe balance:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch Stripe balance',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/stripe/sold-domains/:userId
+ * Get list of all sold domains with payment details
+ */
+router.get('/sold-domains/:userId', async (req, res) => {
+  console.log(`🌐 Fetching sold domains for user ${req.params.userId}...`);
+
+  try {
+    const { userId } = req.params;
+
+    const soldDomains = await query(`
+      SELECT 
+        sp.domain_name,
+        sp.amount,
+        sp.currency,
+        sp.buyer_name,
+        sp.buyer_email,
+        sp.status,
+        sp.created_at as sold_at,
+        sp.updated_at,
+        c.campaign_name,
+        c.campaign_id
+      FROM stripe_payments sp
+      LEFT JOIN campaigns c ON sp.campaign_id = c.campaign_id
+      WHERE sp.user_id = $1 
+        AND sp.status IN ('completed', 'succeeded')
+      ORDER BY sp.created_at DESC
+    `, [userId]);
+
+    const totalRevenue = soldDomains.rows.reduce((sum, d) => sum + parseFloat(d.amount || 0), 0);
+
+    res.json({
+      success: true,
+      data: {
+        soldDomains: soldDomains.rows,
+        summary: {
+          totalDomainsSold: soldDomains.rows.length,
+          totalRevenue,
+          averagePrice: soldDomains.rows.length > 0 
+            ? (totalRevenue / soldDomains.rows.length).toFixed(2) 
+            : 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching sold domains:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch sold domains',
+      message: error.message
+    });
+  }
+});
+
+/**
  * GET /api/stripe/transactions/:userId
  * Get all transactions (payments + approvals) for a user
  */
