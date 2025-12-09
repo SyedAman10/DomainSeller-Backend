@@ -347,6 +347,8 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
   // Handle the event
   try {
+    const { sendEmail } = require('../services/emailService');
+    
     switch (event.type) {
       case 'payment_intent.succeeded':
         const paymentIntent = event.data.object;
@@ -363,8 +365,168 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       case 'checkout.session.completed':
         const session = event.data.object;
         console.log(`✅ Checkout completed: ${session.id}`);
+        
         if (session.payment_intent) {
-          await updatePaymentStatus(session.payment_intent, 'completed');
+          // Update payment status
+          const updatedPayment = await updatePaymentStatus(session.payment_intent, 'completed');
+          
+          // If we have payment info, notify the seller
+          if (updatedPayment) {
+            // Get seller info
+            const sellerResult = await query(
+              `SELECT u.email, u.first_name, u.username 
+               FROM users u 
+               WHERE u.id = $1`,
+              [updatedPayment.user_id]
+            );
+            
+            if (sellerResult.rows.length > 0) {
+              const seller = sellerResult.rows[0];
+              const sellerName = seller.first_name || seller.username || 'Seller';
+              
+              // Calculate amount in proper currency format
+              const amount = updatedPayment.amount;
+              const currency = updatedPayment.currency || 'USD';
+              
+              console.log(`📧 Notifying seller ${seller.email} about payment...`);
+              
+              // Send seller notification
+              const sellerEmailHtml = `
+                <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
+                  <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
+                    <div style="font-size:60px;margin-bottom:10px;">💰</div>
+                    <h1 style="color:white;margin:0;font-size:28px;">Payment Received!</h1>
+                  </div>
+                  
+                  <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
+                    <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
+                      Hi <strong>${sellerName}</strong>,
+                    </p>
+                    
+                    <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
+                      Great news! You've received a payment for your domain.
+                    </p>
+                    
+                    <div style="background:white;border:2px solid #10b981;border-radius:12px;padding:25px;margin:25px 0;">
+                      <h3 style="margin:0 0 20px 0;color:#059669;font-size:18px;">💳 Payment Details</h3>
+                      <table style="width:100%;border-collapse:collapse;">
+                        <tr>
+                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Domain:</td>
+                          <td style="padding:10px 0;color:#0f172a;font-weight:600;text-align:right;">${updatedPayment.domain_name}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Amount:</td>
+                          <td style="padding:10px 0;color:#10b981;font-weight:700;font-size:20px;text-align:right;">$${amount} ${currency}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Buyer:</td>
+                          <td style="padding:10px 0;color:#0f172a;font-weight:600;text-align:right;">${updatedPayment.buyer_name}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Buyer Email:</td>
+                          <td style="padding:10px 0;color:#0f172a;text-align:right;">${updatedPayment.buyer_email}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Status:</td>
+                          <td style="padding:10px 0;text-align:right;"><span style="background:#10b981;color:white;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;">PAID ✓</span></td>
+                        </tr>
+                      </table>
+                    </div>
+                    
+                    <div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:12px;padding:20px;margin:25px 0;">
+                      <h4 style="margin:0 0 10px 0;color:#92400e;font-size:16px;">🔑 Next Steps</h4>
+                      <ol style="color:#78350f;margin:0;padding-left:20px;line-height:1.8;">
+                        <li>Contact the buyer to initiate domain transfer</li>
+                        <li>Use your domain registrar to transfer the domain</li>
+                        <li>Confirm transfer completion with the buyer</li>
+                      </ol>
+                    </div>
+                    
+                    <div style="background:#eff6ff;border-radius:12px;padding:20px;margin:25px 0;">
+                      <p style="margin:0;color:#1e40af;font-size:14px;">
+                        💡 <strong>Tip:</strong> The payment has been deposited directly to your connected Stripe account. 
+                        Payouts to your bank will follow your Stripe payout schedule.
+                      </p>
+                    </div>
+                    
+                    <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
+                      Thank you for using our platform!
+                    </p>
+                  </div>
+                </div>
+              `;
+              
+              await sendEmail({
+                to: seller.email,
+                subject: `💰 Payment Received: $${amount} for ${updatedPayment.domain_name}`,
+                html: sellerEmailHtml,
+                text: `Payment Received!\n\nHi ${sellerName},\n\nYou've received a payment of $${amount} ${currency} for ${updatedPayment.domain_name}.\n\nBuyer: ${updatedPayment.buyer_name} (${updatedPayment.buyer_email})\n\nNext steps:\n1. Contact the buyer to initiate domain transfer\n2. Use your domain registrar to transfer the domain\n3. Confirm transfer completion with the buyer\n\nThe payment has been deposited to your Stripe account.`,
+                tags: ['payment-received', 'seller-notification', `campaign-${updatedPayment.campaign_id}`]
+              });
+              
+              console.log(`✅ Seller notification sent to ${seller.email}`);
+              
+              // Also send buyer confirmation
+              const buyerEmailHtml = `
+                <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
+                  <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
+                    <div style="font-size:60px;margin-bottom:10px;">✅</div>
+                    <h1 style="color:white;margin:0;font-size:28px;">Payment Confirmed!</h1>
+                  </div>
+                  
+                  <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
+                    <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
+                      Hi <strong>${updatedPayment.buyer_name}</strong>,
+                    </p>
+                    
+                    <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
+                      Thank you for your purchase! Your payment has been successfully processed.
+                    </p>
+                    
+                    <div style="background:white;border:2px solid #10b981;border-radius:12px;padding:25px;margin:25px 0;">
+                      <h3 style="margin:0 0 20px 0;color:#059669;font-size:18px;">📋 Order Summary</h3>
+                      <table style="width:100%;border-collapse:collapse;">
+                        <tr>
+                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Domain Purchased:</td>
+                          <td style="padding:10px 0;color:#0f172a;font-weight:600;text-align:right;">${updatedPayment.domain_name}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Amount Paid:</td>
+                          <td style="padding:10px 0;color:#10b981;font-weight:700;font-size:20px;text-align:right;">$${amount} ${currency}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Status:</td>
+                          <td style="padding:10px 0;text-align:right;"><span style="background:#10b981;color:white;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;">PAID ✓</span></td>
+                        </tr>
+                      </table>
+                    </div>
+                    
+                    <div style="background:#dbeafe;border-radius:12px;padding:20px;margin:25px 0;">
+                      <h4 style="margin:0 0 10px 0;color:#1e40af;font-size:16px;">📧 What Happens Next?</h4>
+                      <p style="color:#1e3a8a;margin:0;line-height:1.6;">
+                        The seller has been notified of your payment and will contact you shortly 
+                        to complete the domain transfer. Please check your email for further instructions.
+                      </p>
+                    </div>
+                    
+                    <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
+                      Thank you for your purchase!
+                    </p>
+                  </div>
+                </div>
+              `;
+              
+              await sendEmail({
+                to: updatedPayment.buyer_email,
+                subject: `✅ Payment Confirmed: ${updatedPayment.domain_name}`,
+                html: buyerEmailHtml,
+                text: `Payment Confirmed!\n\nHi ${updatedPayment.buyer_name},\n\nThank you for your purchase of ${updatedPayment.domain_name} for $${amount} ${currency}.\n\nThe seller has been notified and will contact you shortly to complete the domain transfer.\n\nPlease check your email for further instructions.`,
+                tags: ['payment-confirmed', 'buyer-notification', `campaign-${updatedPayment.campaign_id}`]
+              });
+              
+              console.log(`✅ Buyer confirmation sent to ${updatedPayment.buyer_email}`);
+            }
+          }
         }
         break;
 
@@ -901,6 +1063,228 @@ router.get('/approvals/:id/decline', async (req, res) => {
         </body>
       </html>
     `);
+  }
+});
+
+/**
+ * GET /api/stripe/payments/user/:userId
+ * Get all payments for a user (seller dashboard)
+ */
+router.get('/payments/user/:userId', async (req, res) => {
+  console.log(`📋 Fetching payments for user ${req.params.userId}...`);
+
+  try {
+    const { userId } = req.params;
+    const { status, limit = 50 } = req.query;
+
+    let queryText = `
+      SELECT 
+        sp.*,
+        c.campaign_name,
+        c.domain_name as campaign_domain
+      FROM stripe_payments sp
+      LEFT JOIN campaigns c ON sp.campaign_id = c.campaign_id
+      WHERE sp.user_id = $1
+    `;
+    const queryParams = [userId];
+
+    if (status) {
+      queryText += ` AND sp.status = $2`;
+      queryParams.push(status);
+    }
+
+    queryText += ` ORDER BY sp.created_at DESC LIMIT $${queryParams.length + 1}`;
+    queryParams.push(limit);
+
+    const result = await query(queryText, queryParams);
+
+    // Calculate totals
+    const payments = result.rows;
+    const totalReceived = payments
+      .filter(p => p.status === 'completed' || p.status === 'succeeded')
+      .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    const pendingAmount = payments
+      .filter(p => p.status === 'pending')
+      .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+
+    res.json({
+      success: true,
+      data: {
+        payments,
+        summary: {
+          totalPayments: payments.length,
+          totalReceived,
+          pendingAmount,
+          completedCount: payments.filter(p => p.status === 'completed' || p.status === 'succeeded').length,
+          pendingCount: payments.filter(p => p.status === 'pending').length,
+          failedCount: payments.filter(p => p.status === 'failed').length
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching user payments:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch payments',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/stripe/dashboard/:userId
+ * Get seller dashboard summary
+ */
+router.get('/dashboard/:userId', async (req, res) => {
+  console.log(`📊 Fetching dashboard for user ${req.params.userId}...`);
+
+  try {
+    const { userId } = req.params;
+
+    // Get payment stats
+    const paymentsResult = await query(`
+      SELECT 
+        COUNT(*) as total_payments,
+        SUM(CASE WHEN status IN ('completed', 'succeeded') THEN amount ELSE 0 END) as total_received,
+        SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) as pending_amount,
+        SUM(CASE WHEN status IN ('completed', 'succeeded') THEN 1 ELSE 0 END) as completed_count,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count
+      FROM stripe_payments
+      WHERE user_id = $1
+    `, [userId]);
+
+    // Get recent payments
+    const recentPayments = await query(`
+      SELECT 
+        sp.*,
+        c.campaign_name
+      FROM stripe_payments sp
+      LEFT JOIN campaigns c ON sp.campaign_id = c.campaign_id
+      WHERE sp.user_id = $1
+      ORDER BY sp.created_at DESC
+      LIMIT 5
+    `, [userId]);
+
+    // Get pending approvals
+    const pendingApprovals = await query(`
+      SELECT 
+        sa.*,
+        c.campaign_name
+      FROM stripe_approvals sa
+      LEFT JOIN campaigns c ON sa.campaign_id = c.campaign_id
+      WHERE sa.user_id = $1 AND sa.status = 'pending'
+      ORDER BY sa.created_at DESC
+    `, [userId]);
+
+    // Get Stripe account status
+    const stripeConfig = await getUserStripeConfig(userId);
+
+    const stats = paymentsResult.rows[0];
+
+    res.json({
+      success: true,
+      data: {
+        stripeAccount: {
+          connected: !!stripeConfig.accountId,
+          enabled: stripeConfig.enabled,
+          accountId: stripeConfig.accountId
+        },
+        summary: {
+          totalPayments: parseInt(stats.total_payments) || 0,
+          totalReceived: parseFloat(stats.total_received) || 0,
+          pendingAmount: parseFloat(stats.pending_amount) || 0,
+          completedCount: parseInt(stats.completed_count) || 0,
+          pendingCount: parseInt(stats.pending_count) || 0
+        },
+        recentPayments: recentPayments.rows,
+        pendingApprovals: pendingApprovals.rows
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching dashboard:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch dashboard',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/stripe/transactions/:userId
+ * Get all transactions (payments + approvals) for a user
+ */
+router.get('/transactions/:userId', async (req, res) => {
+  console.log(`💳 Fetching transactions for user ${req.params.userId}...`);
+
+  try {
+    const { userId } = req.params;
+    const { limit = 100 } = req.query;
+
+    // Get payments
+    const payments = await query(`
+      SELECT 
+        'payment' as type,
+        sp.id,
+        sp.domain_name,
+        sp.amount,
+        sp.currency,
+        sp.buyer_name,
+        sp.buyer_email,
+        sp.status,
+        sp.created_at,
+        sp.updated_at,
+        c.campaign_name
+      FROM stripe_payments sp
+      LEFT JOIN campaigns c ON sp.campaign_id = c.campaign_id
+      WHERE sp.user_id = $1
+    `, [userId]);
+
+    // Get approvals
+    const approvals = await query(`
+      SELECT 
+        'approval' as type,
+        sa.id,
+        sa.domain_name,
+        sa.amount,
+        sa.currency,
+        sa.buyer_name,
+        sa.buyer_email,
+        sa.status,
+        sa.created_at,
+        sa.updated_at,
+        c.campaign_name
+      FROM stripe_approvals sa
+      LEFT JOIN campaigns c ON sa.campaign_id = c.campaign_id
+      WHERE sa.user_id = $1
+    `, [userId]);
+
+    // Combine and sort
+    const transactions = [...payments.rows, ...approvals.rows]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, limit);
+
+    res.json({
+      success: true,
+      data: {
+        transactions,
+        counts: {
+          payments: payments.rows.length,
+          approvals: approvals.rows.length,
+          total: transactions.length
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching transactions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch transactions',
+      message: error.message
+    });
   }
 });
 
