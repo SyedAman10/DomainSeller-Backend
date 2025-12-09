@@ -152,7 +152,37 @@ const createPaymentLink = async (paymentData) => {
   console.log(`   Seller Account: ${sellerStripeAccountId}`);
   console.log(`   Buyer: ${buyerName} (${buyerEmail})`);
 
+  // Stripe's maximum amount is $999,999.99 (99999999 cents)
+  const STRIPE_MAX_AMOUNT = 999999.99;
+
   try {
+    // Validate amount is within Stripe's limits
+    if (amount > STRIPE_MAX_AMOUNT) {
+      const numInstallments = Math.ceil(amount / STRIPE_MAX_AMOUNT);
+      const installmentAmount = Math.ceil(amount / numInstallments);
+      
+      console.log(`❌ Amount $${amount} exceeds Stripe's maximum of $${STRIPE_MAX_AMOUNT}`);
+      return {
+        success: false,
+        error: 'Amount exceeds Stripe limit',
+        message: `The amount $${amount.toLocaleString()} exceeds Stripe's maximum transaction limit of $999,999.99 per payment.`,
+        maxAllowed: STRIPE_MAX_AMOUNT,
+        suggestedAlternative: 'installments',
+        installmentPlan: {
+          totalAmount: amount,
+          numberOfPayments: numInstallments,
+          amountPerPayment: installmentAmount,
+          suggestion: `This purchase can be split into ${numInstallments} installment payments of approximately $${installmentAmount.toLocaleString()} each.`
+        },
+        buyerMessage: `Hi! Due to payment processing limits, this domain purchase of $${amount.toLocaleString()} would need to be completed in ${numInstallments} installment payments of $${installmentAmount.toLocaleString()} each. Would you like to proceed with an installment plan? Once you confirm, I'll send you the first payment link.`,
+        alternatives: [
+          `Pay in ${numInstallments} installments of ~$${installmentAmount.toLocaleString()} via Stripe`,
+          'Use Escrow.com for the full amount (recommended for high-value transactions)',
+          'Wire transfer directly to seller'
+        ]
+      };
+    }
+
     // Calculate application fee (your platform's commission)
     const amountInCents = Math.round(amount * 100);
     const applicationFeeAmount = Math.round(amountInCents * (applicationFeePercent / 100));
