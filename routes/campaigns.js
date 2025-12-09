@@ -482,7 +482,9 @@ router.post('/', async (req, res) => {
       includePrice,
       maxEmailsPerDay,
       followUpSequence,
-      followUpDays
+      followUpDays,
+      includeLandingPage,
+      landingPageUrl
     } = req.body;
 
     // Validate required fields
