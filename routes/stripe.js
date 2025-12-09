@@ -703,12 +703,77 @@ router.get('/approvals/:id/approve', async (req, res) => {
         </html>
       `);
     } else {
+      // Check if it's an installment plan suggestion (amount too high)
+      if (paymentResult.suggestedAlternative === 'installments' && paymentResult.installmentPlan) {
+        const plan = paymentResult.installmentPlan;
+        return res.send(`
+          <html>
+            <head>
+              <title>High-Value Domain - Installment Plan</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+            </head>
+            <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;padding:20px;background:#f1f5f9;">
+              <div style="max-width:700px;margin:30px auto;background:white;padding:40px;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,0.1);">
+                <div style="text-align:center;margin-bottom:30px;">
+                  <div style="font-size:64px;margin-bottom:15px;">💎</div>
+                  <h1 style="color:#0f172a;margin:0;">High-Value Domain Sale</h1>
+                  <p style="color:#64748b;font-size:18px;margin-top:10px;">Amount exceeds single payment limit</p>
+                </div>
+                
+                <div style="background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:2px solid #f59e0b;padding:25px;border-radius:12px;margin:20px 0;">
+                  <h3 style="margin:0 0 15px 0;color:#92400e;font-size:18px;">⚠️ Stripe Payment Limit</h3>
+                  <p style="color:#78350f;margin:0;line-height:1.6;">
+                    The domain <strong>${request.domain_name}</strong> is priced at <strong>$${request.amount.toLocaleString()}</strong>, 
+                    which exceeds Stripe's maximum single payment limit of $999,999.99.
+                  </p>
+                </div>
+                
+                <div style="background:#f0fdf4;border:2px solid #22c55e;padding:25px;border-radius:12px;margin:20px 0;">
+                  <h3 style="margin:0 0 15px 0;color:#166534;font-size:18px;">✅ Suggested: Installment Plan</h3>
+                  <div style="background:white;padding:20px;border-radius:8px;">
+                    <p style="margin:0 0 10px 0;color:#334155;"><strong>Total Amount:</strong> $${plan.totalAmount.toLocaleString()}</p>
+                    <p style="margin:0 0 10px 0;color:#334155;"><strong>Number of Payments:</strong> ${plan.numberOfPayments}</p>
+                    <p style="margin:0;color:#334155;"><strong>Amount Per Payment:</strong> ~$${plan.amountPerPayment.toLocaleString()}</p>
+                  </div>
+                </div>
+                
+                <div style="background:#eff6ff;border:2px solid #3b82f6;padding:25px;border-radius:12px;margin:20px 0;">
+                  <h3 style="margin:0 0 15px 0;color:#1e40af;font-size:18px;">📧 Send This Message to Buyer</h3>
+                  <p style="color:#64748b;font-size:14px;margin:0 0 15px 0;">Copy and send this message to ${request.buyer_name}:</p>
+                  <div style="background:white;padding:20px;border-radius:8px;border-left:4px solid #3b82f6;">
+                    <p style="color:#334155;line-height:1.8;margin:0;white-space:pre-wrap;">${paymentResult.buyerMessage}</p>
+                  </div>
+                  <button onclick="navigator.clipboard.writeText(\`${paymentResult.buyerMessage.replace(/`/g, '\\`')}\`);this.innerText='✓ Copied!';setTimeout(()=>this.innerText='📋 Copy Message',2000)" 
+                          style="margin-top:15px;padding:12px 25px;background:#3b82f6;color:white;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600;">
+                    📋 Copy Message
+                  </button>
+                </div>
+                
+                <div style="background:#f8fafc;padding:20px;border-radius:8px;margin:20px 0;">
+                  <h4 style="margin:0 0 15px 0;color:#334155;">💡 Alternative Options:</h4>
+                  <ul style="color:#64748b;margin:0;padding-left:20px;line-height:2;">
+                    ${paymentResult.alternatives.map(alt => `<li>${alt}</li>`).join('')}
+                  </ul>
+                </div>
+                
+                <div style="text-align:center;margin-top:30px;">
+                  <p style="color:#64748b;font-size:14px;">
+                    Once the buyer agrees to the installment plan, create separate payment links for each installment.
+                  </p>
+                </div>
+              </div>
+            </body>
+          </html>
+        `);
+      }
+      
+      // Generic error
       res.status(500).send(`
         <html>
           <head><title>Error</title></head>
           <body style="font-family:Arial;padding:50px;text-align:center;">
             <h1>❌ Error Creating Payment Link</h1>
-            <p>Failed to create Stripe payment link</p>
+            <p>${paymentResult.message || 'Failed to create Stripe payment link'}</p>
             <p><a href="javascript:history.back()">Go Back</a></p>
           </body>
         </html>
