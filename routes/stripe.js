@@ -365,10 +365,37 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       case 'checkout.session.completed':
         const session = event.data.object;
         console.log(`✅ Checkout completed: ${session.id}`);
+        console.log(`   Payment Intent: ${session.payment_intent}`);
+        console.log(`   Payment Link: ${session.payment_link}`);
+        console.log(`   Customer Email: ${session.customer_details?.email}`);
+        
+        // Try to update by payment_intent first, then by payment_link
+        let updatedPayment = null;
         
         if (session.payment_intent) {
-          // Update payment status
-          const updatedPayment = await updatePaymentStatus(session.payment_intent, 'completed');
+          updatedPayment = await updatePaymentStatus(session.payment_intent, 'completed');
+        }
+        
+        // If not found by payment_intent, try by payment_link
+        if (!updatedPayment && session.payment_link) {
+          console.log(`🔍 Trying to find payment by payment_link: ${session.payment_link}`);
+          const paymentByLink = await query(
+            `UPDATE stripe_payments 
+             SET status = 'completed', 
+                 payment_intent_id = $1,
+                 updated_at = NOW()
+             WHERE payment_link_id = $2
+             RETURNING *`,
+            [session.payment_intent, session.payment_link]
+          );
+          
+          if (paymentByLink.rows.length > 0) {
+            updatedPayment = paymentByLink.rows[0];
+            console.log(`✅ Found and updated payment by payment_link`);
+          }
+        }
+        
+        if (updatedPayment) {
           
           // If we have payment info, notify the seller
           if (updatedPayment) {
@@ -1207,6 +1234,96 @@ router.get('/dashboard/:userId', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch dashboard',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/stripe/sync-payments/:userId
+ * Sync payment statuses from Stripe (manual sync)
+ */
+router.post('/sync-payments/:userId', async (req, res) => {
+  console.log(`🔄 Syncing payments for user ${req.params.userId}...`);
+
+  try {
+    const { userId } = req.params;
+
+    // Get user's Stripe account
+    const stripeConfig = await getUserStripeConfig(userId);
+
+    if (!stripeConfig.accountId) {
+      return res.status(400).json({
+        success: false,
+        error: 'No Stripe account connected'
+      });
+    }
+
+    // Get pending payments from database
+    const pendingPayments = await query(
+      `SELECT * FROM stripe_payments 
+       WHERE user_id = $1 AND status = 'pending'`,
+      [userId]
+    );
+
+    console.log(`📋 Found ${pendingPayments.rows.length} pending payments to check`);
+
+    let updated = 0;
+    let errors = [];
+
+    for (const payment of pendingPayments.rows) {
+      try {
+        // Try to find this payment in Stripe by payment_link_id
+        if (payment.payment_link_id) {
+          // Get checkout sessions for this payment link
+          const sessions = await stripe.checkout.sessions.list({
+            payment_link: payment.payment_link_id,
+            limit: 10
+          }, {
+            stripeAccount: stripeConfig.accountId
+          });
+
+          // Check if any session is completed
+          const completedSession = sessions.data.find(s => 
+            s.payment_status === 'paid' || s.status === 'complete'
+          );
+
+          if (completedSession) {
+            // Update the payment status
+            await query(
+              `UPDATE stripe_payments 
+               SET status = 'completed',
+                   payment_intent_id = $1,
+                   updated_at = NOW()
+               WHERE id = $2`,
+              [completedSession.payment_intent, payment.id]
+            );
+            
+            console.log(`✅ Updated payment ${payment.id} (${payment.domain_name}) to completed`);
+            updated++;
+          }
+        }
+      } catch (err) {
+        console.error(`❌ Error syncing payment ${payment.id}:`, err.message);
+        errors.push({ paymentId: payment.id, error: err.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Synced ${updated} payments`,
+      data: {
+        checked: pendingPayments.rows.length,
+        updated,
+        errors: errors.length > 0 ? errors : undefined
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error syncing payments:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to sync payments',
       message: error.message
     });
   }
