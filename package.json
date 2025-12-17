@@ -36,7 +36,8 @@
     "node-cron": "^3.0.3",
     "node-fetch": "^2.7.0",
     "pg": "^8.11.3",
-    "stripe": "^20.0.0"
+    "stripe": "^20.0.0",
+    "whois-json": "^2.0.4"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

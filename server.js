@@ -15,6 +15,7 @@ const escrowRoutes = require('./routes/escrow');
 const stripeRoutes = require('./routes/stripe');
 const userRoutes = require('./routes/users');
 const analyticsRoutes = require('./routes/analytics');
+const domainRoutes = require('./routes/domains');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -132,6 +133,7 @@ app.use('/backend/escrow', escrowRoutes);
 app.use('/backend/stripe', stripeRoutes);
 app.use('/backend/users', userRoutes);
 app.use('/backend/analytics', analyticsRoutes);
+app.use('/backend/domains', domainRoutes);
 
 // Mailgun webhook routes (must be accessible without prefix for webhooks)
 app.use('/inbound', inboundRoutes);
