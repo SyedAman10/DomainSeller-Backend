@@ -195,7 +195,7 @@ const startServer = async () => {
     console.log('✅ Email queue processor started');
 
     // Start listening
-    app.listen(PORT, () => {
+    app.listen(PORT,"127.0.0.1" , () => {
       console.log('');
       console.log('='.repeat(50));
       console.log(`🚀 Campaign Backend Server Running`);
