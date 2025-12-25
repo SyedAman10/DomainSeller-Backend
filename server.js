@@ -26,7 +26,8 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'https://3vltn.com',
-  'http://3vltn.com'
+  'http://3vltn.com',
+  'https://api.3vltn.com'
 ];
 
 console.log('🌐 CORS Allowed Origins:', allowedOrigins);
