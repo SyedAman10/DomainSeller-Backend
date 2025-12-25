@@ -757,7 +757,13 @@ router.post('/approvals/:id/approve', async (req, res) => {
  * Approve link (for email buttons) - GET version
  */
 router.get('/approvals/:id/approve', async (req, res) => {
-  console.log(`✅ Approving Stripe request ${req.params.id} (via GET)...`);
+  console.log('\n════════════════════════════════════════════════════════════');
+  console.log('✅ STRIPE APPROVAL REQUEST RECEIVED (GET)');
+  console.log(`📍 Request Path: ${req.path}`);
+  console.log(`🆔 Approval ID: ${req.params.id}`);
+  console.log(`🌍 Origin: ${req.headers.origin || 'No origin'}`);
+  console.log(`🔗 Full URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`);
+  console.log('════════════════════════════════════════════════════════════');
 
   try {
     const { id } = req.params;
