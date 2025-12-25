@@ -11,6 +11,29 @@ const {
 const { createEscrowTransaction } = require('../services/escrowService');
 
 /**
+ * GET /api/inbound/mailgun
+ * Test endpoint - Mailgun webhook should use POST, but this allows browser testing
+ */
+router.get('/mailgun', (req, res) => {
+  console.log('ℹ️  GET request received at /inbound/mailgun');
+  console.log('   This is a test endpoint. Mailgun webhooks use POST.');
+  
+  res.status(200).json({
+    success: true,
+    message: 'Mailgun webhook endpoint is active',
+    note: 'This endpoint accepts POST requests from Mailgun',
+    instructions: {
+      mailgunRoute: 'Configure in Mailgun Dashboard > Receiving > Routes',
+      expression: 'match_recipient("admin@mail.3vltn.com") OR match_recipient("info@mail.3vltn.com")',
+      forwardTo: `${req.protocol}://${req.get('host')}/inbound/mailgun`,
+      method: 'POST (not GET)',
+      testCommand: `curl -X POST ${req.protocol}://${req.get('host')}/inbound/mailgun -d "sender=test@example.com" -d "recipient=admin@mail.3vltn.com" -d "subject=Test" -d "body-plain=Test message"`
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
+/**
  * POST /api/inbound/mailgun
  * Webhook for receiving inbound emails from Mailgun
  */
