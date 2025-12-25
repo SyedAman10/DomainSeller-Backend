@@ -15,9 +15,16 @@ const { createEscrowTransaction } = require('../services/escrowService');
  * Webhook for receiving inbound emails from Mailgun
  */
 router.post('/mailgun', async (req, res) => {
+  const startTime = Date.now(); // Track processing time
+  
   console.log('\n════════════════════════════════════════════════════════════');
-  console.log('📨 INBOUND EMAIL RECEIVED');
+  console.log('📨 INBOUND EMAIL RECEIVED FROM MAILGUN WEBHOOK');
   console.log(`⏰ Time: ${new Date().toISOString()}`);
+  console.log(`🌐 Request Method: ${req.method}`);
+  console.log(`📡 Request Path: ${req.path}`);
+  console.log(`🔗 Full URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`);
+  console.log(`📋 Headers:`, JSON.stringify(req.headers, null, 2));
+  console.log(`📦 Body Keys:`, Object.keys(req.body));
   console.log('════════════════════════════════════════════════════════════');
 
   try {
@@ -36,13 +43,18 @@ router.post('/mailgun', async (req, res) => {
     console.log(`📬 To: ${recipient}`);
     console.log(`📝 Subject: ${subject}`);
     console.log(`💬 Message: ${(strippedText || bodyText || '').substring(0, 100)}...`);
+    console.log(`🔑 In-Reply-To: ${inReplyTo || 'N/A'}`);
+    console.log(`🔗 References: ${references || 'N/A'}`);
 
     // Extract buyer email
     const buyerEmail = sender;
     const buyerName = sender.split('@')[0].split('<')[0].trim() || 'there';
+    
+    console.log(`👤 Extracted Buyer: ${buyerName} <${buyerEmail}>`);
 
     // Find the campaign this is replying to
-    console.log('🔍 Looking for related campaign...');
+    console.log('🔍 Looking for related campaign in database...');
+    console.log(`   Searching sent_emails and scheduled_emails for: ${buyerEmail}`);
     
     // Try to find campaign by checking sent_emails or scheduled_emails
     const campaignLookup = await query(
@@ -78,15 +90,30 @@ router.post('/mailgun', async (req, res) => {
 
     if (campaignLookup.rows.length === 0) {
       console.log('⚠️  No campaign found for this buyer');
+      console.log('   This could mean:');
+      console.log('   1. No email was sent to this buyer yet');
+      console.log('   2. Buyer email does not match what was sent');
+      console.log('   3. Campaign was deleted');
+      console.log('\n   💡 TIP: Check sent_emails table for this buyer email');
+      
       return res.status(200).json({
         success: true,
-        message: 'Email received but no campaign found'
+        message: 'Email received but no campaign found',
+        buyerEmail: buyerEmail,
+        debug: {
+          searchedFor: buyerEmail,
+          timestamp: new Date().toISOString()
+        }
       });
     }
 
     const campaign = campaignLookup.rows[0];
     console.log(`✅ Found Campaign: ${campaign.campaign_name}`);
+    console.log(`   Campaign ID: ${campaign.campaign_id}`);
     console.log(`   Domain: ${campaign.domain_name}`);
+    console.log(`   User ID: ${campaign.user_id}`);
+    console.log(`   Auto-Response: ${campaign.auto_response_enabled !== false ? 'ENABLED ✅' : 'DISABLED ❌'}`);
+    console.log(`   Notification Email: ${campaign.notification_email || 'Not set'}`);
 
     // Store the inbound message
     const messageContent = strippedText || bodyText || 'No message content';
@@ -206,6 +233,10 @@ router.post('/mailgun', async (req, res) => {
 
     // Generate AI response
     console.log('🤖 Generating AI response...');
+    console.log(`   Model: ${process.env.AI_MODEL || 'gpt-4o-mini'}`);
+    console.log(`   OpenAI Key: ${process.env.OPENAI_API_KEY ? '✅ Configured' : '❌ MISSING'}`);
+    console.log(`   Response Style: ${campaign.response_style || 'professional'}`);
+    console.log(`   Response Length: ${campaign.response_length || 'medium'}`);
     
     const aiResponse = await generateAIResponse({
       buyerMessage: messageContent,
@@ -227,6 +258,12 @@ router.post('/mailgun', async (req, res) => {
 
     if (!aiResponse.success) {
       console.warn('⚠️  AI generation failed, using fallback response');
+      console.warn(`   Error: ${aiResponse.error || 'Unknown error'}`);
+    } else {
+      console.log('✅ AI Response Generated Successfully');
+      console.log(`   Length: ${aiResponse.reply.length} characters`);
+      console.log(`   Tokens Used: ${aiResponse.tokensUsed || 'N/A'}`);
+      console.log(`   Preview: ${aiResponse.reply.substring(0, 100)}...`);
     }
 
     let responseText = aiResponse.reply;
@@ -345,6 +382,18 @@ router.post('/mailgun', async (req, res) => {
       });
 
       console.log('✅ AI response sent successfully!');
+      console.log('\n📊 PROCESSING SUMMARY:');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`✅ Inbound email stored in database`);
+      console.log(`✅ ${frozenResult.rows.length} scheduled emails paused`);
+      console.log(`✅ AI response generated (${aiResponse.reply.length} chars)`);
+      console.log(`✅ AI response sent to buyer: ${buyerEmail}`);
+      console.log(`✅ Admin notification sent to: ${notificationEmail}`);
+      console.log(`📧 Campaign: ${campaign.campaign_name}`);
+      console.log(`🌐 Domain: ${campaign.domain_name}`);
+      console.log(`👤 Buyer: ${buyerName} <${buyerEmail}>`);
+      console.log(`⏰ Processed in: ${Date.now() - startTime}ms`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       // ALWAYS send notification to admin with full conversation thread
       if (notificationEmail) {
@@ -1140,6 +1189,73 @@ router.delete('/drafts/:draftId', async (req, res) => {
       success: false,
       error: 'Failed to discard draft',
       message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/inbound/test
+ * Test endpoint to simulate an inbound email (for debugging)
+ */
+router.post('/test', async (req, res) => {
+  console.log('\n🧪 TEST ENDPOINT HIT - Simulating inbound email');
+  console.log('════════════════════════════════════════════════════════════');
+  console.log('Request body:', JSON.stringify(req.body, null, 2));
+  
+  res.json({
+    success: true,
+    message: 'Test endpoint working',
+    receivedData: req.body,
+    timestamp: new Date().toISOString()
+  });
+});
+
+/**
+ * GET /api/inbound/webhook-status
+ * Check if webhook is properly configured and receiving requests
+ */
+router.get('/webhook-status', async (req, res) => {
+  console.log('🔍 Checking webhook status...');
+  
+  try {
+    // Check recent inbound emails
+    const recentEmails = await query(
+      `SELECT 
+        campaign_id,
+        buyer_email,
+        direction,
+        received_at,
+        subject
+       FROM email_conversations
+       WHERE direction = 'inbound'
+       ORDER BY received_at DESC
+       LIMIT 10`
+    );
+    
+    // Check if Mailgun is configured
+    const mailgunConfigured = !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
+    
+    res.json({
+      success: true,
+      webhookUrl: `${req.protocol}://${req.get('host')}/inbound/mailgun`,
+      alternateWebhookUrl: `${req.protocol}://${req.get('host')}/backend/inbound/mailgun`,
+      mailgunConfigured: mailgunConfigured,
+      mailgunDomain: process.env.MAILGUN_DOMAIN || 'NOT_CONFIGURED',
+      recentInboundEmails: recentEmails.rows.length,
+      lastInboundEmail: recentEmails.rows[0] || null,
+      instructions: {
+        step1: 'Log into Mailgun dashboard: https://app.mailgun.com',
+        step2: `Go to Receiving > Routes`,
+        step3: `Create a route that forwards to: ${req.protocol}://${req.get('host')}/inbound/mailgun`,
+        step4: `Set Expression: match_recipient("admin@mail.3vltn.com") OR match_recipient("info@mail.3vltn.com")`,
+        step5: 'Test by sending an email to admin@mail.3vltn.com or replying to a campaign email'
+      }
+    });
+  } catch (error) {
+    console.error('Error checking webhook status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
