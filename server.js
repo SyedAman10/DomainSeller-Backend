@@ -17,6 +17,7 @@ const userRoutes = require('./routes/users');
 const analyticsRoutes = require('./routes/analytics');
 const domainRoutes = require('./routes/domains');
 const referralRoutes = require('./routes/referrals');
+const leadRoutes = require('./routes/leads');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -137,6 +138,7 @@ app.use('/backend/users', userRoutes);
 app.use('/backend/analytics', analyticsRoutes);
 app.use('/backend/domains', domainRoutes);
 app.use('/backend/referrals', referralRoutes);
+app.use('/backend/leads', leadRoutes);
 
 // Mailgun webhook routes (must be accessible without prefix for webhooks)
 app.use('/inbound', inboundRoutes);

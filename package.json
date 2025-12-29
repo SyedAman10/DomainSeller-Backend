@@ -27,6 +27,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "apify-client": "^2.9.3",
     "axios": "^1.6.2",
     "bcrypt": "^6.0.0",
     "body-parser": "^1.20.2",

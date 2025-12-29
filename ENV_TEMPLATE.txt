@@ -24,10 +24,15 @@ ESCROW_API_KEY=your_escrow_api_key
 OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 AI_MODEL=gpt-4o-mini
 
-# Frontend URL (for CORS)
-FRONTEND_URL=http://localhost:3000
+# Frontend URL (for CORS and referral links)
+# Local: http://localhost:3000
+# Production: https://3vltn.com
+FRONTEND_URL=https://3vltn.com
 
 # Email Queue Settings
 EMAIL_BATCH_LIMIT=10
 QUEUE_CHECK_INTERVAL=*/5 * * * *
+
+# Apify Integration (for Lead Generation)
+APIFY_API_KEY=apify_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
