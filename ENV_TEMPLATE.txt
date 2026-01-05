@@ -36,3 +36,8 @@ QUEUE_CHECK_INTERVAL=*/5 * * * *
 # Apify Integration (for Lead Generation)
 APIFY_API_KEY=apify_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
+# 3VLTN Chatbot Configuration
+CONTACT_NAME=Sarah from 3VLTN
+SIGNUP_LINK=https://3vltn.com/signup
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxxxx/xxxxx/xxxxx
+
