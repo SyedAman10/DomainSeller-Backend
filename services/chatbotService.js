@@ -84,11 +84,14 @@ const CHATBOT_INTENTS = {
  * @returns {Object|null} Matched intent or null
  */
 const matchIntent = (userMessage) => {
-  const lowerMessage = userMessage.toLowerCase();
+  const lowerMessage = userMessage.toLowerCase().trim();
   
   for (const [intentName, intent] of Object.entries(CHATBOT_INTENTS)) {
     for (const trigger of intent.triggers) {
-      if (lowerMessage.includes(trigger)) {
+      // Use word boundary matching to avoid false matches like "nothing" matching "hi"
+      // Match if trigger is the exact message or surrounded by word boundaries
+      const regex = new RegExp(`\\b${trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (regex.test(lowerMessage)) {
         return {
           name: intentName,
           response: intent.response
@@ -354,44 +357,49 @@ const scoreLeadFromConversation = (conversationHistory) => {
   }
 
   // 4. Domain Value (If disclosed)
-  const valuePatterns = [
-    /\$?\s*(\d+)k/gi,  // $5k, 10k, etc.
-    /\$\s*(\d+,?\d*)/gi,  // $5000, $5,000, etc.
-    /(premium|high value|valuable)/gi,
-    /(mid-range|average)/gi
-  ];
-
-  for (const pattern of valuePatterns) {
-    const matches = allUserMessages.match(pattern);
-    if (matches) {
-      if (matches[0].includes('premium') || matches[0].includes('high value')) {
-        qualificationData.domainValue = 'high';
+  // Check for explicit low/mid-range indicators first
+  if (allUserMessages.includes('nothing premium') || 
+      allUserMessages.includes('not premium') ||
+      allUserMessages.includes('low value')) {
+    qualificationData.domainValue = 'low';
+    score += 0;
+    console.log('   Domain Value: Low/Not premium (+0 points)');
+  } else if (allUserMessages.includes('mid-range') || 
+             allUserMessages.includes('average') ||
+             allUserMessages.includes('moderate')) {
+    qualificationData.domainValue = 'medium';
+    score += 1;
+    console.log('   Domain Value: Mid-range (+1 point)');
+  } else if (allUserMessages.includes('premium') || 
+             allUserMessages.includes('high value') ||
+             allUserMessages.includes('valuable')) {
+    qualificationData.domainValue = 'high';
+    score += 2;
+    console.log('   Domain Value: High/Premium (+2 points)');
+  } else {
+    // Try to extract numeric value
+    const dollarMatch = allUserMessages.match(/\$\s*(\d+,?\d*)/);
+    const kMatch = allUserMessages.match(/\$?\s*(\d+)k/i);
+    
+    if (kMatch) {
+      const value = parseInt(kMatch[1]) * 1000;
+      qualificationData.domainValue = value;
+      if (value >= 5000) {
         score += 2;
-        console.log('   Domain Value: High/Premium (+2 points)');
-        break;
-      } else if (matches[0].includes('mid-range') || matches[0].includes('average')) {
-        qualificationData.domainValue = 'medium';
-        score += 1;
-        console.log('   Domain Value: Mid-range (+1 point)');
-        break;
+        console.log(`   Domain Value: $${value} (+2 points)`);
       } else {
-        // Try to extract numeric value
-        const numMatch = matches[0].match(/(\d+)/);
-        if (numMatch) {
-          let value = parseInt(numMatch[0]);
-          if (matches[0].includes('k')) value *= 1000;
-          
-          if (value >= 5000) {
-            qualificationData.domainValue = value;
-            score += 2;
-            console.log(`   Domain Value: $${value} (+2 points)`);
-          } else {
-            qualificationData.domainValue = value;
-            score += 1;
-            console.log(`   Domain Value: $${value} (+1 point)`);
-          }
-          break;
-        }
+        score += 1;
+        console.log(`   Domain Value: $${value} (+1 point)`);
+      }
+    } else if (dollarMatch) {
+      const value = parseInt(dollarMatch[1].replace(/,/g, ''));
+      qualificationData.domainValue = value;
+      if (value >= 5000) {
+        score += 2;
+        console.log(`   Domain Value: $${value} (+2 points)`);
+      } else {
+        score += 1;
+        console.log(`   Domain Value: $${value} (+1 point)`);
       }
     }
   }

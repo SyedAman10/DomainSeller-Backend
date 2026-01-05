@@ -47,11 +47,11 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxxxx/xxxxx/xxxxx
 Create the chatbot tables in your database:
 
 ```bash
-# Option 1: Using psql directly
-psql $NEON_DATABASE_URL -f database/create_chatbot_tables.sql
-
-# Option 2: Using the migrate script (if you have one)
+# Run the migration script (recommended)
 node migrate.js
+
+# Or manually with psql
+psql $NEON_DATABASE_URL -f database/create_chatbot_tables.sql
 ```
 
 This creates:
@@ -59,6 +59,8 @@ This creates:
 - `hot_leads` view
 - `lead_statistics` view
 - Necessary indexes
+
+The migration script will automatically detect and run the `create_chatbot_tables.sql` file.
 
 ## Step 4: Start the Server
 
