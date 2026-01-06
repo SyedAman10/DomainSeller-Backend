@@ -30,7 +30,8 @@ const allowedOrigins = [
   'http://localhost:5173',
   'https://3vltn.com',
   'http://3vltn.com',
-  'https://api.3vltn.com'
+  'https://api.3vltn.com',
+  'https://3-vltn-dashboard.vercel.app'
 ];
 
 console.log('🌐 CORS Allowed Origins:', allowedOrigins);
