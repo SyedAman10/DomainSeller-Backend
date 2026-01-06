@@ -112,12 +112,48 @@ router.post('/message', async (req, res) => {
 
     console.log('✅ Session updated successfully');
 
+    // Auto-score after 3+ messages (to capture early drop-offs)
+    let autoScore = null;
+    const messageCount = conversationHistory.length;
+    
+    if (messageCount >= 3 && messageCount % 2 === 0) { // Score every 2 messages after 3
+      try {
+        const leadScore = scoreLeadFromConversation(conversationHistory);
+        
+        // Update score in database
+        await client.query(
+          `UPDATE chatbot_sessions 
+           SET lead_score = $1,
+               lead_classification = $2,
+               qualification_data = $3,
+               scored_at = NOW()
+           WHERE session_id = $4`,
+          [
+            leadScore.score,
+            leadScore.classification,
+            JSON.stringify(leadScore.qualificationData),
+            session.session_id
+          ]
+        );
+        
+        autoScore = {
+          score: leadScore.score,
+          classification: leadScore.classification
+        };
+        
+        console.log(`🎯 Auto-scored: ${leadScore.score} (${leadScore.classification})`);
+      } catch (error) {
+        console.error('⚠️  Auto-scoring failed:', error.message);
+      }
+    }
+
     res.json({
       success: true,
       sessionId: session.session_id,
       response: chatbotResult.response,
       intent: chatbotResult.intent,
-      messageCount: conversationHistory.length
+      messageCount: conversationHistory.length,
+      autoScore: autoScore // Include auto-score if available
     });
 
   } catch (error) {
@@ -290,16 +326,21 @@ router.get('/session/:sessionId', async (req, res) => {
  * - classification: hot, warm, cold
  * - minScore: minimum score
  * - limit: number of results (default 50)
+ * - includeUnscored: include sessions without scores (default false)
  */
 router.get('/leads', async (req, res) => {
   const client = await pool.connect();
   
   try {
-    const { classification, minScore, limit = 50 } = req.query;
+    const { classification, minScore, limit = 50, includeUnscored = 'false' } = req.query;
 
-    let query = `SELECT * FROM chatbot_sessions WHERE lead_score IS NOT NULL`;
+    let query = `SELECT * FROM chatbot_sessions WHERE 1=1`;
     const params = [];
     let paramCount = 1;
+
+    if (includeUnscored === 'false') {
+      query += ` AND lead_score IS NOT NULL`;
+    }
 
     if (classification) {
       query += ` AND lead_classification = $${paramCount}`;
@@ -313,7 +354,7 @@ router.get('/leads', async (req, res) => {
       paramCount++;
     }
 
-    query += ` ORDER BY lead_score DESC, updated_at DESC LIMIT $${paramCount}`;
+    query += ` ORDER BY lead_score DESC NULLS LAST, updated_at DESC LIMIT $${paramCount}`;
     params.push(parseInt(limit));
 
     const result = await client.query(query, params);
@@ -379,6 +420,147 @@ router.delete('/session/:sessionId', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to delete session'
+    });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * GET /backend/chatbot/conversations
+ * Get all conversations including unscored ones
+ * 
+ * Query params:
+ * - minMessages: minimum message count (default 1)
+ * - hasEmail: filter by email presence (true/false)
+ * - limit: number of results (default 100)
+ */
+router.get('/conversations', async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    const { minMessages = 1, hasEmail, limit = 100 } = req.query;
+
+    let query = `SELECT * FROM chatbot_sessions WHERE message_count >= $1`;
+    const params = [parseInt(minMessages)];
+    let paramCount = 2;
+
+    if (hasEmail === 'true') {
+      query += ` AND user_email IS NOT NULL`;
+    } else if (hasEmail === 'false') {
+      query += ` AND user_email IS NULL`;
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT $${paramCount}`;
+    params.push(parseInt(limit));
+
+    const result = await client.query(query, params);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      conversations: result.rows.map(row => ({
+        sessionId: row.session_id,
+        userEmail: row.user_email,
+        userName: row.user_name,
+        messageCount: row.message_count,
+        leadScore: row.lead_score,
+        leadClassification: row.lead_classification,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        hasScore: row.lead_score !== null
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Get conversations error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get conversations'
+    });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * POST /backend/chatbot/score-all
+ * Score all unscored conversations that have 2+ messages
+ */
+router.post('/score-all', async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    console.log('\n' + '='.repeat(60));
+    console.log('📊 BATCH SCORING - Starting...');
+    console.log('='.repeat(60));
+
+    // Get all unscored sessions with 2+ messages
+    const result = await client.query(
+      `SELECT session_id, conversation_history 
+       FROM chatbot_sessions 
+       WHERE lead_score IS NULL 
+       AND message_count >= 2`
+    );
+
+    const sessions = result.rows;
+    console.log(`   Found ${sessions.length} unscored conversations`);
+
+    let scored = 0;
+    let failed = 0;
+
+    for (const session of sessions) {
+      try {
+        const conversationHistory = session.conversation_history || [];
+        
+        if (conversationHistory.length < 2) {
+          continue;
+        }
+
+        const leadScore = scoreLeadFromConversation(conversationHistory);
+
+        await client.query(
+          `UPDATE chatbot_sessions 
+           SET lead_score = $1,
+               lead_classification = $2,
+               qualification_data = $3,
+               scored_at = NOW()
+           WHERE session_id = $4`,
+          [
+            leadScore.score,
+            leadScore.classification,
+            JSON.stringify(leadScore.qualificationData),
+            session.session_id
+          ]
+        );
+
+        scored++;
+        console.log(`   ✓ Scored ${session.session_id}: ${leadScore.score} (${leadScore.classification})`);
+
+      } catch (error) {
+        failed++;
+        console.error(`   ✗ Failed to score ${session.session_id}:`, error.message);
+      }
+    }
+
+    console.log('\n' + '='.repeat(60));
+    console.log(`📊 BATCH SCORING COMPLETE`);
+    console.log(`   Scored: ${scored}`);
+    console.log(`   Failed: ${failed}`);
+    console.log('='.repeat(60));
+
+    res.json({
+      success: true,
+      totalFound: sessions.length,
+      scored: scored,
+      failed: failed
+    });
+
+  } catch (error) {
+    console.error('❌ Batch scoring error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to batch score'
     });
   } finally {
     client.release();
