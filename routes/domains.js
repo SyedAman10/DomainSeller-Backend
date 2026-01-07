@@ -11,6 +11,72 @@ const {
 } = require('../services/domainService');
 
 /**
+ * POST /api/domains/check-lock-status
+ * Check if a domain is locked for transfer via WHOIS lookup
+ */
+router.post('/check-lock-status', async (req, res) => {
+  console.log('🔍 Checking domain lock status...');
+
+  try {
+    const { domainName } = req.body;
+
+    if (!domainName) {
+      return res.status(400).json({
+        success: false,
+        error: 'domainName is required'
+      });
+    }
+
+    // Clean and validate domain name
+    const cleanDomain = domainName.toLowerCase().trim();
+    
+    if (!cleanDomain.includes('.')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid domain name format'
+      });
+    }
+
+    console.log(`   Domain: ${cleanDomain}`);
+
+    // Check transfer lock status
+    const lockStatus = await checkDomainTransferLock(cleanDomain);
+
+    // Parse status codes from WHOIS data
+    const statusCodes = lockStatus.lockStatus.length > 0 
+      ? lockStatus.lockStatus 
+      : ['ok'];
+
+    res.json({
+      success: lockStatus.success,
+      domainName: cleanDomain,
+      isLocked: lockStatus.isTransferLocked,
+      status: lockStatus.isTransferLocked ? 'locked' : 'unlocked',
+      statusCodes: statusCodes,
+      canTransfer: lockStatus.canTransfer,
+      registrar: lockStatus.registrar,
+      expiryDate: lockStatus.expiryDate,
+      nameservers: lockStatus.nameservers,
+      message: lockStatus.message,
+      unlockInstructions: lockStatus.unlockInstructions,
+      detailedInfo: {
+        registrar: lockStatus.registrar,
+        expiresOn: lockStatus.expiryDate,
+        nameservers: lockStatus.nameservers
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error checking lock status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check domain lock status',
+      message: error.message
+    });
+  }
+});
+
+/**
  * POST /api/domains/add
  * Add a new domain to user's portfolio
  */

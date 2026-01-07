@@ -95,7 +95,7 @@ Analyze the conversation history and generate a lead score with classification.
 **Response:**
 ```json
 {
-  "success": true,
+  "success": true, 
   "sessionId": "session_123456789",
   "leadScore": {
     "score": 5,
