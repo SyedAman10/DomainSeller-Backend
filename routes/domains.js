@@ -42,8 +42,21 @@ router.post('/check-lock-status', async (req, res) => {
     // Check transfer lock status
     const lockStatus = await checkDomainTransferLock(cleanDomain);
 
-    // Parse status codes from WHOIS data
-    const statusCodes = lockStatus.lockStatus.length > 0 
+    // If the check failed, return error response
+    if (!lockStatus.success) {
+      return res.status(503).json({
+        success: false,
+        domainName: cleanDomain,
+        error: lockStatus.error,
+        message: lockStatus.message,
+        isLocked: null,
+        canTransfer: null,
+        status: 'unknown'
+      });
+    }
+
+    // Parse status codes from WHOIS/RDAP data
+    const statusCodes = lockStatus.lockStatus && lockStatus.lockStatus.length > 0 
       ? lockStatus.lockStatus 
       : ['ok'];
 
@@ -59,6 +72,7 @@ router.post('/check-lock-status', async (req, res) => {
       nameservers: lockStatus.nameservers,
       message: lockStatus.message,
       unlockInstructions: lockStatus.unlockInstructions,
+      dataSource: lockStatus.dataSource, // 'WHOIS' or 'RDAP'
       detailedInfo: {
         registrar: lockStatus.registrar,
         expiresOn: lockStatus.expiryDate,

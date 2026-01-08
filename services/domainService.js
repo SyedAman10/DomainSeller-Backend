@@ -13,15 +13,216 @@ const whois = require('whois-json');
  * @param {string} domainName - The domain name to check
  * @returns {Object} - Transfer lock status and details
  */
+/**
+ * Check if WHOIS response is valid or an error
+ */
+const isValidWhoisResponse = (whoisData) => {
+  const keys = Object.keys(whoisData);
+  
+  // Check for error indicators in keys
+  const errorIndicators = [
+    'ratelimit',
+    'rate limit',
+    'exceeded',
+    'retired',
+    'error',
+    'failed',
+    'unavailable'
+  ];
+  
+  // If there's only one key and it contains error text, it's likely an error response
+  if (keys.length === 1) {
+    const keyLower = keys[0].toLowerCase();
+    if (errorIndicators.some(indicator => keyLower.includes(indicator))) {
+      return false;
+    }
+  }
+  
+  // Check if response has expected domain data fields
+  const hasExpectedFields = whoisData.domainName || 
+                           whoisData.domain || 
+                           whoisData.registrar || 
+                           whoisData.domainStatus ||
+                           whoisData.status;
+  
+  return hasExpectedFields;
+};
+
+/**
+ * Fetch domain data using RDAP (modern replacement for WHOIS)
+ */
+const fetchRDAPData = async (domainName) => {
+  try {
+    console.log(`🔄 Fetching RDAP data for: ${domainName}`);
+    
+    // RDAP endpoint for .com domains
+    const tld = domainName.split('.').pop();
+    
+    // RDAP bootstrap service URLs
+    const rdapUrls = {
+      'com': 'https://rdap.verisign.com/com/v1/domain/',
+      'net': 'https://rdap.verisign.com/net/v1/domain/',
+      'org': 'https://rdap.publicinterestregistry.org/rdap/domain/',
+      'io': 'https://rdap.nic.io/domain/',
+      'co': 'https://rdap.nic.co/domain/'
+    };
+    
+    const baseUrl = rdapUrls[tld] || `https://rdap.org/domain/`;
+    const rdapUrl = `${baseUrl}${domainName}`;
+    
+    console.log(`📡 RDAP URL: ${rdapUrl}`);
+    
+    const response = await axios.get(rdapUrl, {
+      timeout: 10000,
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    
+    return response.data;
+    
+  } catch (error) {
+    console.error(`❌ RDAP lookup failed for ${domainName}:`, error.message);
+    throw error;
+  }
+};
+
+/**
+ * Parse RDAP response for transfer lock status
+ */
+const parseRDAPStatus = (rdapData) => {
+  const statuses = rdapData.status || [];
+  
+  console.log('📋 RDAP Status Array:', statuses);
+  
+  const transferLockIndicators = [
+    'clientTransferProhibited',
+    'serverTransferProhibited',
+    'transfer prohibited',
+    'transferProhibited'
+  ];
+  
+  let isLocked = false;
+  let lockStatuses = [];
+  
+  statuses.forEach(status => {
+    const statusStr = status.toLowerCase();
+    transferLockIndicators.forEach(indicator => {
+      if (statusStr.includes(indicator.toLowerCase())) {
+        isLocked = true;
+        lockStatuses.push(status);
+      }
+    });
+  });
+  
+  return {
+    isLocked,
+    lockStatuses,
+    allStatuses: statuses,
+    registrar: getRegistrarFromRDAP(rdapData),
+    nameservers: (rdapData.nameservers || []).map(ns => ns.ldhName || ns),
+    expiryDate: getExpiryFromRDAP(rdapData)
+  };
+};
+
+/**
+ * Extract registrar from RDAP data
+ */
+const getRegistrarFromRDAP = (rdapData) => {
+  if (rdapData.entities) {
+    const registrar = rdapData.entities.find(e => 
+      e.roles && e.roles.includes('registrar')
+    );
+    if (registrar && registrar.vcardArray) {
+      // Parse vCard format
+      const vcard = registrar.vcardArray[1];
+      const fnField = vcard.find(field => field[0] === 'fn');
+      if (fnField) return fnField[3];
+    }
+  }
+  return 'Unknown';
+};
+
+/**
+ * Extract expiry date from RDAP data
+ */
+const getExpiryFromRDAP = (rdapData) => {
+  if (rdapData.events) {
+    const expiryEvent = rdapData.events.find(e => e.eventAction === 'expiration');
+    if (expiryEvent) return expiryEvent.eventDate;
+  }
+  return null;
+};
+
 const checkDomainTransferLock = async (domainName) => {
   try {
     console.log(`🔍 Checking transfer lock status for: ${domainName}`);
 
-    // Get WHOIS data
-    const whoisData = await whois(domainName);
+    // Try WHOIS first
+    let whoisData;
+    let usingRDAP = false;
     
-    // DEBUG: Log the entire WHOIS response to understand what we're getting
-    console.log('📋 WHOIS Data Keys:', Object.keys(whoisData));
+    try {
+      whoisData = await whois(domainName);
+      
+      // DEBUG: Log the WHOIS response
+      console.log('📋 WHOIS Data Keys:', Object.keys(whoisData));
+      
+      // Check if WHOIS response is valid
+      if (!isValidWhoisResponse(whoisData)) {
+        const keys = Object.keys(whoisData);
+        console.log(`⚠️ WHOIS response appears to be an error: ${keys[0]}`);
+        console.log('🔄 Falling back to RDAP...');
+        throw new Error('WHOIS rate limited or unavailable');
+      }
+      
+    } catch (whoisError) {
+      console.log(`⚠️ WHOIS failed: ${whoisError.message}`);
+      console.log('🔄 Attempting RDAP lookup...');
+      
+      try {
+        const rdapData = await fetchRDAPData(domainName);
+        const rdapResult = parseRDAPStatus(rdapData);
+        usingRDAP = true;
+        
+        console.log(`🔐 Final Lock Status (RDAP) for ${domainName}:`, {
+          isLocked: rdapResult.isLocked,
+          lockStatuses: rdapResult.lockStatuses,
+          allStatuses: rdapResult.allStatuses,
+          canTransfer: !rdapResult.isLocked
+        });
+        
+        return {
+          success: true,
+          domain: domainName,
+          isTransferLocked: rdapResult.isLocked,
+          lockStatus: rdapResult.lockStatuses.length > 0 ? rdapResult.lockStatuses : rdapResult.allStatuses,
+          canTransfer: !rdapResult.isLocked,
+          registrar: rdapResult.registrar,
+          expiryDate: rdapResult.expiryDate,
+          nameservers: rdapResult.nameservers,
+          message: rdapResult.isLocked 
+            ? '⚠️ Domain transfer is LOCKED. You must unlock it at your registrar before transfer.'
+            : '✅ Domain is UNLOCKED and ready for transfer.',
+          unlockInstructions: rdapResult.isLocked ? getUnlockInstructions(rdapResult.registrar) : null,
+          dataSource: 'RDAP'
+        };
+        
+      } catch (rdapError) {
+        console.error(`❌ RDAP also failed: ${rdapError.message}`);
+        // Both WHOIS and RDAP failed - return error
+        return {
+          success: false,
+          domain: domainName,
+          error: 'Unable to fetch domain data',
+          message: '⚠️ Unable to verify transfer lock status. WHOIS rate limited and RDAP unavailable. Please check manually with your registrar or try again in a few minutes.',
+          canTransfer: null,
+          isTransferLocked: null
+        };
+      }
+    }
+    
+    // WHOIS succeeded - parse it
     console.log('📋 Domain Status Fields:', {
       domainStatus: whoisData.domainStatus,
       status: whoisData.status,
@@ -86,10 +287,21 @@ const checkDomainTransferLock = async (domainName) => {
       });
     } else {
       console.log('⚠️ WARNING: No domain status field found in WHOIS data');
+      console.log('⚠️ Returning error - cannot determine lock status');
+      
+      // Don't default to unlocked when we can't read the status
+      return {
+        success: false,
+        domain: domainName,
+        error: 'Unable to parse domain status from WHOIS',
+        message: '⚠️ Unable to verify transfer lock status. Please check manually with your registrar or try again later.',
+        canTransfer: null,
+        isTransferLocked: null
+      };
     }
 
     // Log final determination
-    console.log(`🔐 Final Lock Status for ${domainName}:`, {
+    console.log(`🔐 Final Lock Status (WHOIS) for ${domainName}:`, {
       isLocked,
       lockStatuses: lockStatus,
       allStatuses: allStatuses,
@@ -108,7 +320,8 @@ const checkDomainTransferLock = async (domainName) => {
       message: isLocked 
         ? '⚠️ Domain transfer is LOCKED. You must unlock it at your registrar before transfer.'
         : '✅ Domain is UNLOCKED and ready for transfer.',
-      unlockInstructions: isLocked ? getUnlockInstructions(whoisData.registrar) : null
+      unlockInstructions: isLocked ? getUnlockInstructions(whoisData.registrar) : null,
+      dataSource: 'WHOIS'
     };
 
   } catch (error) {
@@ -118,7 +331,8 @@ const checkDomainTransferLock = async (domainName) => {
       domain: domainName,
       error: error.message,
       message: 'Unable to verify transfer lock status. Please check manually with your registrar.',
-      canTransfer: null
+      canTransfer: null,
+      isTransferLocked: null
     };
   }
 };
