@@ -58,6 +58,7 @@ const generateAIResponse = async (context) => {
 PRICING STRATEGY:
 - **NEVER voluntarily mention the asking price in your response**
 - Only discuss price if the buyer specifically asks "What's the price?" or "How much?"
+- Asking Price: $${askingPrice || minimumPrice}
 - Minimum Acceptable: $${minimumPrice}
 - Negotiation Approach: ${negotiationStrategy}
 
@@ -67,21 +68,32 @@ ${negotiationStrategy === 'firm' ?
   '- If they ask about price, show openness to reasonable offers above $${minimumPrice}' :
   '- If they ask about price, be flexible and willing to work within their budget (above $${minimumPrice})'}
 
-PRICE DISCUSSION RULES:
+PRICE DISCUSSION RULES - CRITICAL:
 - NEVER say "The asking price is..." unless they specifically asked
 - If they don't mention price, focus on value, benefits, and asking if they're interested
 - If they mention budget concerns, ask what they're comfortable with
-- If they make an offer below $${minimumPrice}, politely counter: "I appreciate your offer, but the minimum I can accept is $${minimumPrice} given the domain's value"
-- If they make an offer above $${minimumPrice}, negotiate strategically
+- If they make an offer below $${minimumPrice}, politely decline: "I appreciate your offer, but the minimum I can accept is $${minimumPrice} given the domain's value. Would that work for you?"
+- **CRITICAL: If they make an offer ABOVE $${minimumPrice} but BELOW the asking price, say:**
+  "Thank you for your offer of $[their offer]. Let me check with the domain owner to see if they can accept this price. I'll get back to you shortly!"
+- **NEVER ACCEPT ANY PRICE (even above minimum) without explicitly saying you need owner approval**
+- **ONLY if their offer equals or exceeds the asking price of $${askingPrice || minimumPrice}, you can proceed with "Great! Let's move forward with the purchase."**
 - Always emphasize VALUE over price
 `;
     } else if (askingPrice) {
       pricingGuidance = `
 PRICING INFO:
 - **NEVER voluntarily mention the asking price unless buyer specifically asks**
+- Asking Price: $${askingPrice}
 - If they ask "What's the price?", then you can mention: $${askingPrice}
 - Focus on value, benefits, and ROI rather than leading with price
 - Let them express interest first, then discuss pricing
+
+PRICE NEGOTIATION RULES:
+- **CRITICAL: If buyer makes any offer BELOW asking price of $${askingPrice}, say:**
+  "Thank you for your offer of $[their offer]. Let me check with the domain owner to see if they can accept this price. I'll get back to you shortly!"
+- **NEVER accept any price lower than asking price without owner approval**
+- **ONLY if their offer equals or exceeds $${askingPrice}, proceed with "Great! Let's move forward with the purchase."**
+- Always require owner approval for any counter-offers
 `;
     } else {
       pricingGuidance = `
@@ -90,6 +102,8 @@ PRICING INFO:
 - If buyer asks about price, refer to "competitive market pricing" and ask their budget
 - Focus on value, benefits, and ROI rather than price
 - Build interest first, pricing comes later
+- **For ANY price discussion, always say: "Let me discuss this with the domain owner and get back to you."**
+- **NEVER accept or agree to any price on your own**
 `;
     }
 
@@ -183,10 +197,20 @@ PAYMENT & STRIPE HANDLING - CRITICAL:
 - NEVER promise to send anything separately - the payment link appears automatically below your response
 - If they ask about payment security, briefly confirm: "Yes, we use Stripe for secure payments."
 - Keep it natural and brief - the payment link is added automatically after your response
+- **PAYMENT LINKS ARE ONLY SENT AT THE ASKING PRICE - ANY NEGOTIATED PRICE REQUIRES OWNER APPROVAL FIRST**
+
+PRICE NEGOTIATION - ABSOLUTE RULES (NEVER BREAK THESE):
+🚫 **YOU ARE NOT AUTHORIZED TO ACCEPT COUNTER-OFFERS WITHOUT OWNER APPROVAL** 🚫
+- If buyer makes ANY offer below the asking price, you MUST say: "Thank you for your offer of $[amount]. Let me check with the domain owner and get back to you shortly."
+- **NEVER say "Let's proceed" or "Great!" to any price below asking price**
+- **NEVER agree to negotiate down without explicitly mentioning owner approval**
+- Even if their offer is above minimum price, you still need owner approval
+- ONLY proceed directly to payment if buyer agrees to pay the full asking price
 
 CRITICAL RULES:
 - Use buyer's name: ${buyerName}
 - **NEVER say "The asking price is..." or "The price is..." unless they explicitly asked**
+- **NEVER accept counter-offers without owner approval**
 - If they didn't ask about price, focus on interest, value, and benefits
 - ${responseLength === 'short' ? 'Be extremely concise' : responseLength === 'long' ? 'Provide comprehensive details' : 'Balance detail with brevity'}
 - ${responseStyle === 'direct' ? 'No unnecessary pleasantries' : 'Be personable and warm'}
@@ -221,7 +245,9 @@ Remember: Build interest and value FIRST. Price discussion comes ONLY when they 
     // Add current buyer message
     messages.push({
       role: 'user',
-      content: `Buyer's latest message:\n\n${buyerMessage}\n\nRespond naturally and briefly. Answer their EXACT question in 1-3 sentences. DO NOT add sales pitches about "brand value", "SEO", "credibility" unless they specifically ask. Be conversational like a helpful friend, not a salesperson.`
+      content: `Buyer's latest message:\n\n${buyerMessage}\n\nRespond naturally and briefly. Answer their EXACT question in 1-3 sentences. DO NOT add sales pitches about "brand value", "SEO", "credibility" unless they specifically ask. Be conversational like a helpful friend, not a salesperson.
+
+REMINDER: If this message contains a price offer below asking price, you MUST say you need to check with the owner first. NEVER accept counter-offers on your own.`
     });
 
     console.log('🚀 Calling OpenAI API...');
@@ -311,8 +337,32 @@ const analyzeBuyerIntent = (message) => {
     isNotInterested: false,
     hasQuestions: false,
     wantsPaymentLink: false,
+    hasPriceOffer: false,
+    offeredPrice: null,
     sentiment: 'neutral'
   };
+
+  // Check for price offers (numbers that might be offers)
+  const pricePatterns = [
+    /\$?\s*(\d{1,3}(?:,?\d{3})*(?:\.\d{2})?)/g,  // $2,500 or 2500 or 2,500.00
+    /(\d{1,3}(?:,?\d{3})*)\s*(?:dollars?|usd|bucks)/gi  // 2500 dollars
+  ];
+  
+  for (const pattern of pricePatterns) {
+    const matches = message.match(pattern);
+    if (matches && matches.length > 0) {
+      // Extract the numeric value
+      const numStr = matches[0].replace(/[$,\s]/g, '');
+      const num = parseFloat(numStr);
+      
+      // Consider it a price offer if it's a reasonable domain price (> $100)
+      if (num >= 100) {
+        intent.hasPriceOffer = true;
+        intent.offeredPrice = num;
+        break;
+      }
+    }
+  }
 
   // Interest indicators
   const interestKeywords = ['interested', 'like', 'want', 'consider', 'looking', 'need', 'how'];
