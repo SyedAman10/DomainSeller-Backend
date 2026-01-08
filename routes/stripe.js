@@ -1554,5 +1554,417 @@ router.get('/transactions/:userId', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/stripe/counter-offer/accept
+ * Accept a counter-offer and create payment link with negotiated price
+ * This is called from the email notification when owner clicks "ACCEPT" button
+ */
+router.post('/counter-offer/accept', async (req, res) => {
+  console.log('💰 ACCEPTING COUNTER-OFFER');
+  console.log('════════════════════════════════════════════════════════════');
+  
+  try {
+    const {
+      campaignId,
+      buyerEmail,
+      buyerName,
+      domainName,
+      negotiatedPrice,
+      userId
+    } = req.body;
+
+    console.log(`   Domain: ${domainName}`);
+    console.log(`   Negotiated Price: $${negotiatedPrice}`);
+    console.log(`   Buyer: ${buyerName} (${buyerEmail})`);
+    console.log(`   Campaign ID: ${campaignId}`);
+    console.log(`   User ID: ${userId}`);
+
+    // Validate required fields
+    if (!campaignId || !buyerEmail || !buyerName || !domainName || !negotiatedPrice || !userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    // Get seller's Stripe account
+    const userConfig = await getUserStripeConfig(userId);
+
+    if (!userConfig.enabled || !userConfig.accountId) {
+      return res.status(400).json({
+        success: false,
+        error: 'You must connect your Stripe account first to accept payments',
+        message: 'Please connect your Stripe account in Settings before accepting counter-offers.'
+      });
+    }
+
+    console.log(`✅ Seller Stripe account: ${userConfig.accountId}`);
+
+    // Create payment link at negotiated price
+    const { createPaymentLink } = require('../services/stripeService');
+    const { sendEmail } = require('../services/emailService');
+
+    const paymentResult = await createPaymentLink({
+      domainName: domainName,
+      amount: parseFloat(negotiatedPrice),
+      currency: 'USD',
+      sellerStripeAccountId: userConfig.accountId,
+      buyerEmail: buyerEmail,
+      buyerName: buyerName,
+      campaignId: campaignId,
+      userId: userId
+    });
+
+    if (!paymentResult.success) {
+      throw new Error('Failed to create payment link');
+    }
+
+    console.log(`✅ Payment link created: ${paymentResult.paymentUrl}`);
+
+    // Get campaign details for seller name
+    const campaignResult = await query(
+      'SELECT * FROM campaigns WHERE campaign_id = $1',
+      [campaignId]
+    );
+
+    const campaign = campaignResult.rows[0];
+    
+    // Get seller details
+    const userResult = await query(
+      'SELECT first_name, last_name, username, email FROM users WHERE id = $1',
+      [userId]
+    );
+
+    const user = userResult.rows[0];
+    const sellerName = user.first_name && user.last_name 
+      ? `${user.first_name} ${user.last_name}`.trim() 
+      : user.username || 'Domain Seller';
+    const sellerEmail = user.email || '';
+
+    // Send email to buyer with payment link
+    const emailHtml = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
+        <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
+          <div style="font-size:60px;margin-bottom:10px;">🎉</div>
+          <h1 style="color:white;margin:0;font-size:28px;">Offer Accepted!</h1>
+        </div>
+        
+        <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
+          <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
+            Hi <strong>${buyerName}</strong>,
+          </p>
+          
+          <p style="font-size:16px;color:#334155;line-height:1.7;margin:0 0 25px 0;">
+            Great news! I'm happy to accept your offer of <strong style="color:#10b981;">$${negotiatedPrice}</strong> for <strong>${domainName}</strong>!
+          </p>
+          
+          <div style="background:white;border:2px solid #10b981;border-radius:12px;padding:25px;margin:25px 0;">
+            <h3 style="margin:0 0 15px 0;color:#10b981;text-align:center;">💳 Your Secure Payment Link</h3>
+            <div style="background:#f0fdf4;padding:20px;border-radius:8px;margin:15px 0;text-align:center;">
+              <a href="${paymentResult.paymentUrl}" 
+                 style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);">
+                🔒 PAY NOW - $${negotiatedPrice}
+              </a>
+            </div>
+            <div style="margin:20px 0;">
+              <p style="margin:5px 0;color:#334155;"><strong>💰 Amount:</strong> $${negotiatedPrice} USD</p>
+              <p style="margin:5px 0;color:#334155;"><strong>🌐 Domain:</strong> ${domainName}</p>
+              <p style="margin:5px 0;color:#334155;"><strong>🛡️ Security:</strong> Secured by Stripe</p>
+            </div>
+          </div>
+          
+          <div style="background:#dbeafe;border-radius:12px;padding:20px;margin:25px 0;">
+            <h4 style="margin:0 0 10px 0;color:#1e40af;">📋 What Happens Next?</h4>
+            <ol style="color:#1e3a8a;margin:10px 0;padding-left:20px;line-height:1.8;">
+              <li>Click the payment button above</li>
+              <li>Complete your secure payment with Stripe</li>
+              <li>You'll receive immediate confirmation</li>
+              <li>I'll contact you to complete the domain transfer</li>
+              <li>Domain ownership transferred to you!</li>
+            </ol>
+          </div>
+          
+          <div style="background:#fef3c7;border-radius:12px;padding:20px;margin:25px 0;">
+            <p style="margin:0;color:#92400e;text-align:center;font-size:14px;">
+              ⏰ <strong>Payment link is active for 30 days.</strong> Please complete payment soon to secure the domain!
+            </p>
+          </div>
+          
+          <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
+            Questions? Just reply to this email. Looking forward to completing this sale!
+          </p>
+          
+          <div style="border-top:2px solid #e2e8f0;margin-top:30px;padding-top:20px;text-align:center;">
+            <p style="margin:5px 0;color:#334155;font-weight:600;">${sellerName}</p>
+            ${sellerEmail ? `<p style="margin:5px 0;color:#64748b;">${sellerEmail}</p>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+
+    const emailText = `Hi ${buyerName},\n\n` +
+      `Great news! I'm happy to accept your offer of $${negotiatedPrice} for ${domainName}!\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `💳 SECURE PAYMENT LINK\n\n` +
+      `${paymentResult.paymentUrl}\n\n` +
+      `💰 Amount: $${negotiatedPrice} USD\n` +
+      `🌐 Domain: ${domainName}\n` +
+      `🛡️ Secured by Stripe\n\n` +
+      `Click the link above to complete your secure payment. Once payment is confirmed, I'll contact you to complete the domain transfer.\n\n` +
+      `Looking forward to completing this sale!\n\n` +
+      `Best regards,\n${sellerName}\n${sellerEmail}`;
+
+    await sendEmail({
+      to: buyerEmail,
+      subject: `✅ Offer Accepted! Payment Link for ${domainName}`,
+      html: emailHtml,
+      text: emailText,
+      tags: [`campaign-${campaignId}`, 'counter-offer-accepted', 'payment-link']
+    });
+
+    console.log('✅ Payment link email sent to buyer');
+
+    // Store this as an accepted counter-offer in the conversations
+    await query(
+      `INSERT INTO email_conversations 
+        (campaign_id, buyer_email, buyer_name, direction, subject, message_content, received_at, user_id, domain_name, ai_generated)
+       VALUES ($1, $2, $3, 'outbound', $4, $5, NOW(), $6, $7, false)`,
+      [
+        campaignId,
+        buyerEmail,
+        buyerName,
+        `Offer Accepted! Payment Link for ${domainName}`,
+        `Counter-offer of $${negotiatedPrice} accepted. Payment link sent.`,
+        userId,
+        domainName
+      ]
+    );
+
+    console.log('════════════════════════════════════════════════════════════');
+    console.log('✅ COUNTER-OFFER ACCEPTED SUCCESSFULLY');
+
+    res.json({
+      success: true,
+      message: 'Counter-offer accepted and payment link sent to buyer',
+      paymentUrl: paymentResult.paymentUrl,
+      negotiatedPrice: negotiatedPrice
+    });
+
+  } catch (error) {
+    console.error('❌ Error accepting counter-offer:', error);
+    console.error('Stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to accept counter-offer',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/stripe/counter-offer/accept
+ * Accept counter-offer via GET (for email link clicks)
+ */
+router.get('/counter-offer/accept', async (req, res) => {
+  console.log('💰 ACCEPTING COUNTER-OFFER (GET)');
+  console.log('════════════════════════════════════════════════════════════');
+  
+  try {
+    const {
+      campaignId,
+      buyerEmail,
+      buyerName,
+      domainName,
+      negotiatedPrice,
+      userId
+    } = req.query;
+
+    console.log(`   Domain: ${domainName}`);
+    console.log(`   Negotiated Price: $${negotiatedPrice}`);
+    console.log(`   Buyer: ${buyerName} (${buyerEmail})`);
+
+    // Validate required fields
+    if (!campaignId || !buyerEmail || !buyerName || !domainName || !negotiatedPrice || !userId) {
+      return res.send(`
+        <html>
+          <head><title>Error</title></head>
+          <body style="font-family:Arial;padding:50px;text-align:center;">
+            <h1>❌ Missing Information</h1>
+            <p>Required information is missing. Please use the button from the notification email.</p>
+          </body>
+        </html>
+      `);
+    }
+
+    // Get seller's Stripe account
+    const userConfig = await getUserStripeConfig(userId);
+
+    if (!userConfig.enabled || !userConfig.accountId) {
+      return res.send(`
+        <html>
+          <head><title>Stripe Not Connected</title></head>
+          <body style="font-family:Arial;padding:50px;text-align:center;">
+            <h1>⚠️ Stripe Account Required</h1>
+            <p>You must connect your Stripe account before accepting payments.</p>
+            <p><a href="${process.env.FRONTEND_URL || 'https://3vltn.com'}/settings/stripe">Connect Stripe Account</a></p>
+          </body>
+        </html>
+      `);
+    }
+
+    // Create payment link
+    const { createPaymentLink } = require('../services/stripeService');
+    const { sendEmail } = require('../services/emailService');
+
+    const paymentResult = await createPaymentLink({
+      domainName: domainName,
+      amount: parseFloat(negotiatedPrice),
+      currency: 'USD',
+      sellerStripeAccountId: userConfig.accountId,
+      buyerEmail: buyerEmail,
+      buyerName: buyerName,
+      campaignId: campaignId,
+      userId: userId
+    });
+
+    if (!paymentResult.success) {
+      throw new Error('Failed to create payment link');
+    }
+
+    // Get seller details
+    const userResult = await query(
+      'SELECT first_name, last_name, username, email FROM users WHERE id = $1',
+      [userId]
+    );
+
+    const user = userResult.rows[0];
+    const sellerName = user.first_name && user.last_name 
+      ? `${user.first_name} ${user.last_name}`.trim() 
+      : user.username || 'Domain Seller';
+    const sellerEmail = user.email || '';
+
+    // Send email to buyer
+    const emailHtml = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
+        <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
+          <div style="font-size:60px;margin-bottom:10px;">🎉</div>
+          <h1 style="color:white;margin:0;font-size:28px;">Offer Accepted!</h1>
+        </div>
+        
+        <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
+          <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
+            Hi <strong>${buyerName}</strong>,
+          </p>
+          
+          <p style="font-size:16px;color:#334155;line-height:1.7;margin:0 0 25px 0;">
+            Great news! I'm happy to accept your offer of <strong style="color:#10b981;">$${negotiatedPrice}</strong> for <strong>${domainName}</strong>!
+          </p>
+          
+          <div style="background:white;border:2px solid #10b981;border-radius:12px;padding:25px;margin:25px 0;">
+            <h3 style="margin:0 0 15px 0;color:#10b981;text-align:center;">💳 Your Secure Payment Link</h3>
+            <div style="background:#f0fdf4;padding:20px;border-radius:8px;margin:15px 0;text-align:center;">
+              <a href="${paymentResult.paymentUrl}" 
+                 style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);">
+                🔒 PAY NOW - $${negotiatedPrice}
+              </a>
+            </div>
+            <div style="margin:20px 0;">
+              <p style="margin:5px 0;color:#334155;"><strong>💰 Amount:</strong> $${negotiatedPrice} USD</p>
+              <p style="margin:5px 0;color:#334155;"><strong>🌐 Domain:</strong> ${domainName}</p>
+              <p style="margin:5px 0;color:#334155;"><strong>🛡️ Security:</strong> Secured by Stripe</p>
+            </div>
+          </div>
+          
+          <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
+            Questions? Just reply to this email!
+          </p>
+        </div>
+      </div>
+    `;
+
+    const emailText = `Hi ${buyerName},\n\nGreat news! I'm happy to accept your offer of $${negotiatedPrice} for ${domainName}!\n\nSecure Payment Link: ${paymentResult.paymentUrl}\n\nBest regards,\n${sellerName}`;
+
+    await sendEmail({
+      to: buyerEmail,
+      subject: `✅ Offer Accepted! Payment Link for ${domainName}`,
+      html: emailHtml,
+      text: emailText,
+      tags: [`campaign-${campaignId}`, 'counter-offer-accepted']
+    });
+
+    // Store in conversations
+    await query(
+      `INSERT INTO email_conversations 
+        (campaign_id, buyer_email, buyer_name, direction, subject, message_content, received_at, user_id, domain_name, ai_generated)
+       VALUES ($1, $2, $3, 'outbound', $4, $5, NOW(), $6, $7, false)`,
+      [
+        campaignId,
+        buyerEmail,
+        buyerName,
+        `Offer Accepted! Payment Link for ${domainName}`,
+        `Counter-offer of $${negotiatedPrice} accepted. Payment link sent.`,
+        userId,
+        domainName
+      ]
+    );
+
+    // Success page
+    res.send(`
+      <html>
+        <head>
+          <title>Counter-Offer Accepted</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+        </head>
+        <body style="font-family:Arial,sans-serif;padding:20px;background:#f1f5f9;">
+          <div style="max-width:600px;margin:50px auto;background:white;padding:40px;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,0.1);">
+            <div style="text-align:center;">
+              <div style="font-size:80px;margin-bottom:20px;">🎉</div>
+              <h1 style="color:#10b981;margin:0 0 20px 0;">Counter-Offer Accepted!</h1>
+              <p style="color:#334155;font-size:18px;line-height:1.6;margin:0 0 30px 0;">
+                Perfect! Your acceptance email with the secure payment link has been sent to <strong>${buyerName}</strong>.
+              </p>
+            </div>
+            
+            <div style="background:#f0fdf4;padding:25px;border-radius:12px;margin:25px 0;border:2px solid #10b981;">
+              <h3 style="margin:0 0 15px 0;color:#059669;">📋 Transaction Details</h3>
+              <p style="margin:8px 0;color:#334155;"><strong>Domain:</strong> ${domainName}</p>
+              <p style="margin:8px 0;color:#334155;"><strong>Agreed Price:</strong> $${negotiatedPrice}</p>
+              <p style="margin:8px 0;color:#334155;"><strong>Buyer:</strong> ${buyerName}</p>
+              <p style="margin:8px 0;color:#334155;"><strong>Email Sent To:</strong> ${buyerEmail}</p>
+            </div>
+            
+            <div style="background:#dbeafe;padding:20px;border-radius:8px;margin:25px 0;">
+              <h4 style="margin:0 0 10px 0;color:#1e40af;">✅ What Happens Next</h4>
+              <ol style="color:#1e3a8a;margin:10px 0;padding-left:20px;line-height:1.8;">
+                <li>Buyer receives payment link email</li>
+                <li>Buyer completes secure Stripe payment</li>
+                <li>You receive payment notification</li>
+                <li>Complete domain transfer to buyer</li>
+              </ol>
+            </div>
+            
+            <div style="text-align:center;margin-top:30px;">
+              <p style="color:#64748b;font-size:14px;">You can close this page now.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+
+  } catch (error) {
+    console.error('❌ Error accepting counter-offer:', error);
+    res.send(`
+      <html>
+        <head><title>Error</title></head>
+        <body style="font-family:Arial;padding:50px;text-align:center;">
+          <h1>❌ Error</h1>
+          <p>${error.message}</p>
+          <p><a href="javascript:history.back()">Go Back</a></p>
+        </body>
+      </html>
+    `);
+  }
+});
+
 module.exports = router;
 

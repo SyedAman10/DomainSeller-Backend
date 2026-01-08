@@ -424,16 +424,16 @@ async function notifyAutoResponse({
             ⚡ ACTION REQUIRED: Accept or Counter this Offer
           </p>
           <div style="text-align:center;margin:20px 0;">
-            <p style="color:#64748b;font-size:14px;margin:10px 0;">Reply to this email with your decision or use the buttons below:</p>
-            <a href="mailto:${buyerEmail}?subject=Re: ${domainName} - Counter Offer&body=Hi ${buyerName},%0D%0A%0D%0AThank you for your offer of $${negotiatedPrice}. I accept your offer! I'll send you the payment link shortly.%0D%0A%0D%0ABest regards" 
+            <p style="color:#64748b;font-size:14px;margin:10px 0;">Click a button to respond:</p>
+            <a href="${dashboardUrl}/backend/stripe/counter-offer/accept?campaignId=${campaignId}&buyerEmail=${encodeURIComponent(buyerEmail)}&buyerName=${encodeURIComponent(buyerName)}&domainName=${encodeURIComponent(domainName)}&negotiatedPrice=${negotiatedPrice}&userId=${dashboardUrl.includes('localhost') ? '1' : ''}" 
                style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);margin:10px;">
               ✅ ACCEPT $${negotiatedPrice}
             </a>
-            <a href="mailto:${buyerEmail}?subject=Re: ${domainName} - Counter Offer&body=Hi ${buyerName},%0D%0A%0D%0AThank you for your interest in ${domainName}. I appreciate your offer of $${negotiatedPrice}.%0D%0A%0D%0AThe best I can do is $${askingPrice}. Would that work for you?%0D%0A%0D%0ABest regards" 
+            <a href="mailto:${buyerEmail}?subject=Re: ${encodeURIComponent(domainName)} - Counter Offer&body=Hi ${encodeURIComponent(buyerName)},%0D%0A%0D%0AThank you for your interest in ${encodeURIComponent(domainName)}. I appreciate your offer of $${negotiatedPrice}.%0D%0A%0D%0AThe best I can do is $${askingPrice}. Would that work for you?%0D%0A%0D%0ABest regards" 
                style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(59,130,246,0.3);margin:10px;">
               💬 COUNTER AT $${askingPrice}
             </a>
-            <a href="mailto:${buyerEmail}?subject=Re: ${domainName} - Offer Declined&body=Hi ${buyerName},%0D%0A%0D%0AThank you for your interest in ${domainName}. Unfortunately, I cannot accept $${negotiatedPrice} at this time.%0D%0A%0D%0AIf you're interested at the asking price of $${askingPrice}, please let me know.%0D%0A%0D%0ABest regards" 
+            <a href="mailto:${buyerEmail}?subject=Re: ${encodeURIComponent(domainName)} - Offer Declined&body=Hi ${encodeURIComponent(buyerName)},%0D%0A%0D%0AThank you for your interest in ${encodeURIComponent(domainName)}. Unfortunately, I cannot accept $${negotiatedPrice} at this time.%0D%0A%0D%0AIf you're interested at the asking price of $${askingPrice}, please let me know.%0D%0A%0D%0ABest regards" 
                style="display:inline-block;padding:16px 40px;background:#dc2626;color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(220,38,38,0.3);margin:10px;">
               ❌ DECLINE OFFER
             </a>

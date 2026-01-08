@@ -464,7 +464,8 @@ router.post('/mailgun', async (req, res) => {
           askingPrice: askingPrice,
           approvalId: intent.approvalId || null,
           hasPriceNegotiation: hasPriceNegotiation,
-          negotiatedPrice: negotiatedPrice
+          negotiatedPrice: negotiatedPrice,
+          userId: campaign.user_id
         });
         console.log('✅ Admin notification with full thread sent!');
       } else {
