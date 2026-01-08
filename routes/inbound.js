@@ -296,6 +296,25 @@ router.post('/mailgun', async (req, res) => {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     let requiresApproval = false;
     let approvalMessage = '';
+    let hasPriceNegotiation = false;
+    let negotiatedPrice = null;
+    
+    // Get campaign pricing info
+    const askingPrice = campaign.asking_price || campaign.minimum_price || campaign.domain_value;
+    
+    // Check if buyer made a counter-offer (price mentioned but different from asking)
+    if (intent.hasPriceOffer && intent.offeredPrice && askingPrice) {
+      if (intent.offeredPrice < askingPrice) {
+        console.log(`💰 PRICE NEGOTIATION DETECTED!`);
+        console.log(`   Asking Price: $${askingPrice}`);
+        console.log(`   Buyer's Offer: $${intent.offeredPrice}`);
+        console.log(`   Difference: -$${askingPrice - intent.offeredPrice} (${Math.round((1 - intent.offeredPrice/askingPrice) * 100)}% discount)`);
+        
+        hasPriceNegotiation = true;
+        negotiatedPrice = intent.offeredPrice;
+        requiresApproval = true;
+      }
+    }
     
     if (intent.wantsPaymentLink || intent.isReady) {
       console.log('💰 Buyer wants payment link - ADMIN APPROVAL REQUIRED');
@@ -442,8 +461,10 @@ router.post('/mailgun', async (req, res) => {
           campaignId: campaign.campaign_id,
           conversationThread: fullThread.rows,
           requiresApproval: requiresApproval,
-          askingPrice: campaign.asking_price || campaign.minimum_price || campaign.domain_value,
-          approvalId: intent.approvalId || null
+          askingPrice: askingPrice,
+          approvalId: intent.approvalId || null,
+          hasPriceNegotiation: hasPriceNegotiation,
+          negotiatedPrice: negotiatedPrice
         });
         console.log('✅ Admin notification with full thread sent!');
       } else {

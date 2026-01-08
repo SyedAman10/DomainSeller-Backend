@@ -345,10 +345,14 @@ async function notifyAutoResponse({
   requiresApproval = false,
   askingPrice = null,
   approvalId = null,
+  hasPriceNegotiation = false,
+  negotiatedPrice = null,
   dashboardUrl = 'https://3vltn.com'
 }) {
   const subject = requiresApproval ? 
-    `🔔 APPROVAL NEEDED: ${buyerName} wants to buy ${domainName}!` :
+    (hasPriceNegotiation ? 
+      `💰 COUNTER-OFFER: ${buyerName} offered $${negotiatedPrice} for ${domainName}!` :
+      `🔔 APPROVAL NEEDED: ${buyerName} wants to buy ${domainName}!`) :
     `✅ Auto-Reply Sent: ${domainName}`;
   
   // Build conversation thread HTML
@@ -379,6 +383,99 @@ async function notifyAutoResponse({
   // Approval section if needed
   let approvalHTML = '';
   if (requiresApproval && askingPrice) {
+    // Special section for price negotiations
+    let priceNegotiationHTML = '';
+    if (hasPriceNegotiation && negotiatedPrice) {
+      const discount = askingPrice - negotiatedPrice;
+      const discountPercent = Math.round((discount / askingPrice) * 100);
+      
+      priceNegotiationHTML = `
+        <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:3px solid #f59e0b;padding:25px;border-radius:12px;margin:25px 0;">
+          <h3 style="margin:0 0 15px 0;color:#92400e;font-size:22px;text-align:center;">💰 PRICE NEGOTIATION ALERT!</h3>
+          <div style="background:white;padding:25px;border-radius:8px;margin:15px 0;">
+            <table style="width:100%;border-collapse:collapse;">
+              <tr style="border-bottom:2px solid #f59e0b;">
+                <td style="padding:15px 10px;font-weight:600;color:#92400e;">Your Asking Price:</td>
+                <td style="padding:15px 10px;text-align:right;font-size:24px;font-weight:700;color:#334155;">$${askingPrice.toLocaleString()}</td>
+              </tr>
+              <tr style="border-bottom:2px solid #f59e0b;">
+                <td style="padding:15px 10px;font-weight:600;color:#92400e;">Buyer's Offer:</td>
+                <td style="padding:15px 10px;text-align:right;font-size:24px;font-weight:700;color:#3b82f6;">$${negotiatedPrice.toLocaleString()}</td>
+              </tr>
+              <tr style="background:#fef3c7;">
+                <td style="padding:15px 10px;font-weight:600;color:#92400e;">Difference:</td>
+                <td style="padding:15px 10px;text-align:right;font-size:20px;font-weight:700;color:#dc2626;">-$${discount.toLocaleString()} (${discountPercent}% discount)</td>
+              </tr>
+            </table>
+          </div>
+          <div style="background:#fff7ed;padding:20px;border-radius:8px;margin:20px 0;border:2px dashed #f59e0b;">
+            <p style="margin:0 0 10px 0;color:#334155;font-weight:600;font-size:16px;">👤 Buyer Details:</p>
+            <p style="margin:5px 0;color:#334155;"><strong>Name:</strong> ${buyerName}</p>
+            <p style="margin:5px 0;color:#334155;"><strong>Email:</strong> ${buyerEmail}</p>
+            <p style="margin:5px 0;color:#334155;"><strong>Domain:</strong> ${domainName}</p>
+          </div>
+          <div style="background:#dcfce7;padding:20px;border-radius:8px;margin:20px 0;border-left:4px solid #10b981;">
+            <p style="margin:0;color:#065f46;font-weight:600;font-size:15px;">✅ AI Response Sent:</p>
+            <p style="margin:10px 0 0 0;color:#047857;font-style:italic;">
+              "Let me check with the domain owner to see if they can accept this price. I'll get back to you shortly!"
+            </p>
+          </div>
+          <p style="text-align:center;color:#92400e;font-size:16px;font-weight:600;margin:25px 0 15px 0;">
+            ⚡ ACTION REQUIRED: Accept or Counter this Offer
+          </p>
+          <div style="text-align:center;margin:20px 0;">
+            <p style="color:#64748b;font-size:14px;margin:10px 0;">Reply to this email with your decision or use the buttons below:</p>
+            <a href="mailto:${buyerEmail}?subject=Re: ${domainName} - Counter Offer&body=Hi ${buyerName},%0D%0A%0D%0AThank you for your offer of $${negotiatedPrice}. I accept your offer! I'll send you the payment link shortly.%0D%0A%0D%0ABest regards" 
+               style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);margin:10px;">
+              ✅ ACCEPT $${negotiatedPrice}
+            </a>
+            <a href="mailto:${buyerEmail}?subject=Re: ${domainName} - Counter Offer&body=Hi ${buyerName},%0D%0A%0D%0AThank you for your interest in ${domainName}. I appreciate your offer of $${negotiatedPrice}.%0D%0A%0D%0AThe best I can do is $${askingPrice}. Would that work for you?%0D%0A%0D%0ABest regards" 
+               style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(59,130,246,0.3);margin:10px;">
+              💬 COUNTER AT $${askingPrice}
+            </a>
+            <a href="mailto:${buyerEmail}?subject=Re: ${domainName} - Offer Declined&body=Hi ${buyerName},%0D%0A%0D%0AThank you for your interest in ${domainName}. Unfortunately, I cannot accept $${negotiatedPrice} at this time.%0D%0A%0D%0AIf you're interested at the asking price of $${askingPrice}, please let me know.%0D%0A%0D%0ABest regards" 
+               style="display:inline-block;padding:16px 40px;background:#dc2626;color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(220,38,38,0.3);margin:10px;">
+              ❌ DECLINE OFFER
+            </a>
+          </div>
+          <p style="text-align:center;color:#92400e;font-size:14px;margin:20px 0 0 0;">
+            ⏰ <strong>Respond within 24 hours</strong> to keep the buyer engaged!
+          </p>
+        </div>
+      `;
+      
+      approvalHTML = priceNegotiationHTML;
+    } else {
+      // Regular payment approval (buyer wants to pay asking price)
+      approvalHTML = `
+        <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:2px solid #f59e0b;padding:25px;border-radius:12px;margin:25px 0;">
+          <h3 style="margin:0 0 15px 0;color:#92400e;font-size:20px;">🎯 STRIPE PAYMENT APPROVAL REQUIRED</h3>
+          <div style="background:white;padding:20px;border-radius:8px;margin:15px 0;">
+            <p style="margin:0 0 10px 0;color:#334155;"><strong>💰 Amount:</strong> $${askingPrice} USD</p>
+            <p style="margin:0 0 10px 0;color:#334155;"><strong>👤 Buyer:</strong> ${buyerName} (${buyerEmail})</p>
+            <p style="margin:0 0 10px 0;color:#334155;"><strong>🌐 Domain:</strong> ${domainName}</p>
+            <p style="margin:0;color:#334155;"><strong>📋 Status:</strong> <span style="color:#f59e0b;font-weight:600;">Pending Your Approval</span></p>
+          </div>
+          <div style="text-align:center;margin:30px 0;">
+            <a href="${dashboardUrl}/backend/stripe/approvals/${approvalId}/approve" 
+               style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);margin:10px;">
+              ✅ APPROVE & SEND PAYMENT LINK
+            </a>
+            <a href="${dashboardUrl}/backend/stripe/approvals/${approvalId}/decline" 
+               style="display:inline-block;padding:16px 40px;background:#dc2626;color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(220,38,38,0.3);margin:10px;">
+              ❌ DECLINE REQUEST
+            </a>
+          </div>
+          <p style="color:#64748b;font-size:13px;text-align:center;margin:10px 0;">
+            Click a button above to process this request
+          </p>
+          <p style="text-align:center;color:#92400e;font-size:14px;margin:15px 0 0 0;">
+            ⏳ Buyer is waiting! Please approve within 24 hours to maintain interest.
+          </p>
+        </div>
+      `;
+    }
+  } else {
     approvalHTML = `
       <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:2px solid #f59e0b;padding:25px;border-radius:12px;margin:25px 0;">
         <h3 style="margin:0 0 15px 0;color:#92400e;font-size:20px;">🎯 STRIPE PAYMENT APPROVAL REQUIRED</h3>
