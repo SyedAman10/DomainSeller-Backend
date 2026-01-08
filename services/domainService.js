@@ -20,6 +20,16 @@ const checkDomainTransferLock = async (domainName) => {
     // Get WHOIS data
     const whoisData = await whois(domainName);
     
+    // DEBUG: Log the entire WHOIS response to understand what we're getting
+    console.log('📋 WHOIS Data Keys:', Object.keys(whoisData));
+    console.log('📋 Domain Status Fields:', {
+      domainStatus: whoisData.domainStatus,
+      status: whoisData.status,
+      'Domain Status': whoisData['Domain Status'],
+      'domain status': whoisData['domain status'],
+      DomainStatus: whoisData.DomainStatus
+    });
+    
     // Check for common transfer lock indicators
     const transferLockIndicators = [
       'clientTransferProhibited',
@@ -30,29 +40,67 @@ const checkDomainTransferLock = async (domainName) => {
 
     let isLocked = false;
     let lockStatus = [];
+    let allStatuses = [];
 
-    // Check domain status field
-    if (whoisData.domainStatus || whoisData.status) {
-      const statusArray = Array.isArray(whoisData.domainStatus) 
-        ? whoisData.domainStatus 
-        : [whoisData.domainStatus || whoisData.status];
+    // Try multiple possible status field names (WHOIS data format varies)
+    const possibleStatusFields = [
+      whoisData.domainStatus,
+      whoisData.status,
+      whoisData['Domain Status'],
+      whoisData['domain status'],
+      whoisData.DomainStatus,
+      whoisData.StatusList,
+      whoisData.statuslist
+    ];
+
+    // Find the first non-empty status field
+    let foundStatuses = null;
+    for (const field of possibleStatusFields) {
+      if (field !== undefined && field !== null && field !== '') {
+        foundStatuses = field;
+        break;
+      }
+    }
+
+    if (foundStatuses) {
+      // Convert to array if not already
+      const statusArray = Array.isArray(foundStatuses) 
+        ? foundStatuses 
+        : [foundStatuses];
+
+      // Store all statuses for debugging
+      allStatuses = statusArray;
+      console.log('📋 Found Status Array:', statusArray);
 
       statusArray.forEach(status => {
         const statusStr = typeof status === 'string' ? status.toLowerCase() : String(status).toLowerCase();
+        
+        // Check each indicator
         transferLockIndicators.forEach(indicator => {
           if (statusStr.includes(indicator.toLowerCase())) {
             isLocked = true;
             lockStatus.push(status);
+            console.log(`🔒 LOCK DETECTED: "${status}" contains "${indicator}"`);
           }
         });
       });
+    } else {
+      console.log('⚠️ WARNING: No domain status field found in WHOIS data');
     }
+
+    // Log final determination
+    console.log(`🔐 Final Lock Status for ${domainName}:`, {
+      isLocked,
+      lockStatuses: lockStatus,
+      allStatuses: allStatuses,
+      canTransfer: !isLocked
+    });
 
     return {
       success: true,
       domain: domainName,
       isTransferLocked: isLocked,
-      lockStatus: lockStatus,
+      lockStatus: lockStatus.length > 0 ? lockStatus : allStatuses,
       canTransfer: !isLocked,
       registrar: whoisData.registrar || whoisData.registrarName || 'Unknown',
       expiryDate: whoisData.expirationDate || whoisData.registryExpiryDate,
