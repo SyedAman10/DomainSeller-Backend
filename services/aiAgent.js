@@ -343,25 +343,35 @@ const analyzeBuyerIntent = (message) => {
   };
 
   // Check for price offers (numbers that might be offers)
+  // Look for price patterns in the message
   const pricePatterns = [
-    /\$?\s*(\d{1,3}(?:,?\d{3})*(?:\.\d{2})?)/g,  // $2,500 or 2500 or 2,500.00
-    /(\d{1,3}(?:,?\d{3})*)\s*(?:dollars?|usd|bucks)/gi  // 2500 dollars
+    /\$\s*(\d{1,3}(?:,\d{3})+(?:\.\d{2})?)/g,  // $2,500.00 or $2,500
+    /\$\s*(\d+(?:\.\d{2})?)/g,  // $2500 or $2500.00
+    /(\d{1,3}(?:,\d{3})+(?:\.\d{2})?)\s*(?:dollars?|usd|bucks)/gi,  // 2,500 dollars
+    /(\d+(?:\.\d{2})?)\s*(?:dollars?|usd|bucks)/gi,  // 2500 dollars
+    /(?:^|\s)(\d{3,})(?:\s|$)/g  // Plain numbers with 3+ digits (like "2350")
   ];
   
+  let foundPrices = [];
+  
   for (const pattern of pricePatterns) {
-    const matches = message.match(pattern);
-    if (matches && matches.length > 0) {
-      // Extract the numeric value
-      const numStr = matches[0].replace(/[$,\s]/g, '');
-      const num = parseFloat(numStr);
+    const matches = [...message.matchAll(pattern)];
+    for (const match of matches) {
+      const priceStr = match[1].replace(/[$,\s]/g, '');
+      const price = parseFloat(priceStr);
       
-      // Consider it a price offer if it's a reasonable domain price (> $100)
-      if (num >= 100) {
-        intent.hasPriceOffer = true;
-        intent.offeredPrice = num;
-        break;
+      // Consider it a price if it's between $100 and $1,000,000 (reasonable domain prices)
+      if (price >= 100 && price <= 1000000) {
+        foundPrices.push(price);
       }
     }
+  }
+  
+  // Use the largest price found (most likely to be the actual offer)
+  if (foundPrices.length > 0) {
+    intent.hasPriceOffer = true;
+    intent.offeredPrice = Math.max(...foundPrices);
+    console.log(`💰 Detected price offer: $${intent.offeredPrice} (found: ${foundPrices.join(', ')})`);
   }
 
   // Interest indicators
