@@ -347,8 +347,12 @@ async function notifyAutoResponse({
   approvalId = null,
   hasPriceNegotiation = false,
   negotiatedPrice = null,
+  userId = null,
   dashboardUrl = 'https://3vltn.com'
 }) {
+  // Get API URL for backend endpoints
+  const apiUrl = process.env.BACKEND_URL || 'https://api.3vltn.com';
+  
   const subject = requiresApproval ? 
     (hasPriceNegotiation ? 
       `💰 COUNTER-OFFER: ${buyerName} offered $${negotiatedPrice} for ${domainName}!` :
@@ -425,7 +429,7 @@ async function notifyAutoResponse({
           </p>
           <div style="text-align:center;margin:20px 0;">
             <p style="color:#64748b;font-size:14px;margin:10px 0;">Click a button to respond:</p>
-            <a href="${dashboardUrl}/backend/stripe/counter-offer/accept?campaignId=${campaignId}&buyerEmail=${encodeURIComponent(buyerEmail)}&buyerName=${encodeURIComponent(buyerName)}&domainName=${encodeURIComponent(domainName)}&negotiatedPrice=${negotiatedPrice}&userId=${dashboardUrl.includes('localhost') ? '1' : ''}" 
+            <a href="${apiUrl}/backend/stripe/counter-offer/accept?campaignId=${encodeURIComponent(campaignId)}&buyerEmail=${encodeURIComponent(buyerEmail)}&buyerName=${encodeURIComponent(buyerName)}&domainName=${encodeURIComponent(domainName)}&negotiatedPrice=${negotiatedPrice}&userId=${userId}" 
                style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);margin:10px;">
               ✅ ACCEPT $${negotiatedPrice}
             </a>
