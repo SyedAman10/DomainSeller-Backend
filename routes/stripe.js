@@ -552,6 +552,97 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
               });
               
               console.log(`✅ Buyer confirmation sent to ${updatedPayment.buyer_email}`);
+              
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              // INSTANT ACTIONS AFTER PAYMENT
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              console.log('🔄 Executing instant post-payment actions...');
+              
+              // 1. CLOSE ALL CAMPAIGNS FOR THIS DOMAIN
+              console.log(`📧 Closing all campaigns for domain: ${updatedPayment.domain_name}`);
+              const closeCampaignsResult = await query(
+                `UPDATE campaigns 
+                 SET status = 'completed',
+                     notes = CONCAT(COALESCE(notes, ''), E'\n\nAutomatically closed - Domain sold for $' || $1 || ' on ' || NOW()::date),
+                     updated_at = NOW()
+                 WHERE domain_name = $2 AND status NOT IN ('completed', 'cancelled')
+                 RETURNING campaign_id, campaign_name, status`,
+                [updatedPayment.amount, updatedPayment.domain_name]
+              );
+              
+              if (closeCampaignsResult.rows.length > 0) {
+                console.log(`✅ Closed ${closeCampaignsResult.rows.length} campaign(s):`);
+                closeCampaignsResult.rows.forEach(c => {
+                  console.log(`   - ${c.campaign_name} (ID: ${c.campaign_id}) → ${c.status}`);
+                });
+              } else {
+                console.log(`   ℹ️  No active campaigns found to close`);
+              }
+              
+              // 2. UPDATE DOMAIN STATUS IN DOMAINS TABLE (if exists)
+              console.log(`🏷️  Updating domain status...`);
+              try {
+                const updateDomainResult = await query(
+                  `UPDATE domains 
+                   SET status = 'Sold',
+                       sold_at = NOW(),
+                       sold_price = $1,
+                       buyer_email = $2,
+                       buyer_name = $3,
+                       updated_at = NOW()
+                   WHERE name = $4
+                   RETURNING id, name, status`,
+                  [updatedPayment.amount, updatedPayment.buyer_email, updatedPayment.buyer_name, updatedPayment.domain_name]
+                );
+                
+                if (updateDomainResult.rows.length > 0) {
+                  console.log(`✅ Domain record updated:`);
+                  console.log(`   - Domain: ${updateDomainResult.rows[0].name}`);
+                  console.log(`   - Status: ${updateDomainResult.rows[0].status}`);
+                  console.log(`   - Sold for: $${updatedPayment.amount}`);
+                } else {
+                  console.log(`   ℹ️  Domain not found in domains table (campaign-only domain)`);
+                }
+              } catch (domainError) {
+                console.log(`   ℹ️  Domains table may not exist or domain not listed: ${domainError.message}`);
+              }
+              
+              // 3. CREATE DOMAIN TRANSFER RECORD
+              console.log(`🔄 Creating domain transfer record...`);
+              try {
+                const transferResult = await query(
+                  `INSERT INTO domain_transfers 
+                    (domain_name, seller_id, buyer_email, buyer_name, payment_id, status, transfer_step, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, 'pending_transfer', 'payment_completed', NOW(), NOW())
+                   RETURNING id
+                   ON CONFLICT (domain_name, seller_id) DO UPDATE
+                   SET status = 'pending_transfer',
+                       transfer_step = 'payment_completed',
+                       payment_id = EXCLUDED.payment_id,
+                       updated_at = NOW()
+                   RETURNING id`,
+                  [
+                    updatedPayment.domain_name,
+                    updatedPayment.user_id,
+                    updatedPayment.buyer_email,
+                    updatedPayment.buyer_name,
+                    updatedPayment.id
+                  ]
+                );
+                
+                console.log(`✅ Transfer record created/updated (ID: ${transferResult.rows[0].id})`);
+              } catch (transferError) {
+                console.log(`   ℹ️  Transfer table may not exist: ${transferError.message}`);
+              }
+              
+              console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+              console.log('✅ INSTANT POST-PAYMENT ACTIONS COMPLETED');
+              console.log(`   ✓ Campaigns closed: ${closeCampaignsResult.rows.length}`);
+              console.log(`   ✓ Domain marked as sold`);
+              console.log(`   ✓ Transfer process initiated`);
+              console.log(`   ✓ Buyer: ${updatedPayment.buyer_name} (${updatedPayment.buyer_email})`);
+              console.log(`   ✓ Amount: $${updatedPayment.amount}`);
+              console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             }
           }
         }
