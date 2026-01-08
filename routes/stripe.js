@@ -335,7 +335,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
   let event;
 
-  try {
+  try { 
     // Verify webhook signature
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
