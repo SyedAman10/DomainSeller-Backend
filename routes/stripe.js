@@ -326,8 +326,9 @@ router.get('/payment/:paymentLinkId', async (req, res) => {
 /**
  * POST /api/stripe/webhook
  * Stripe webhook endpoint for payment events
+ * NOTE: express.raw() middleware is applied in server.js BEFORE this route
  */
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+router.post('/webhook', async (req, res) => {
   console.log('════════════════════════════════════════════════════════════');
   console.log('📨 STRIPE WEBHOOK RECEIVED');
   console.log('⏰ Time:', new Date().toISOString());

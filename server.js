@@ -82,14 +82,19 @@ app.use((req, res, next) => {
   next();
 });
 
-// Body parser - EXCLUDE Stripe webhook routes (they need raw body for signature verification)
-app.use((req, res, next) => {
-  if (req.originalUrl === '/backend/stripe/webhook' || req.originalUrl === '/stripe/webhook') {
-    next(); // Skip body parsing for Stripe webhooks
-  } else {
-    bodyParser.json()(req, res, next);
-  }
-});
+// Stripe webhook route MUST be registered BEFORE body parser
+// It needs raw body for signature verification
+app.use('/backend/stripe/webhook', 
+  express.raw({ type: 'application/json' }), 
+  require('./routes/stripe')
+);
+app.use('/stripe/webhook', 
+  express.raw({ type: 'application/json' }), 
+  require('./routes/stripe')
+);
+
+// Body parser for all other routes
+app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Request logging middleware
@@ -142,7 +147,7 @@ app.use('/backend/webhooks', webhookRoutes);
 app.use('/backend/monitoring', monitoringRoutes);
 app.use('/backend/inbound', inboundRoutes);
 app.use('/backend/escrow', escrowRoutes);
-app.use('/backend/stripe', stripeRoutes);
+// Stripe routes registered below with special handling for webhooks
 app.use('/backend/users', userRoutes);
 app.use('/backend/analytics', analyticsRoutes);
 app.use('/backend/domains', domainRoutes);
@@ -157,7 +162,9 @@ app.use('/webhooks', webhookRoutes);
 // Escrow webhook route (must be accessible without prefix)
 app.use('/escrow', escrowRoutes);
 
-// Stripe webhook route (must be accessible without prefix)
+// Stripe routes - webhook already registered above with raw body parser
+// This handles all OTHER stripe routes (not /webhook)
+app.use('/backend/stripe', stripeRoutes);
 app.use('/stripe', stripeRoutes);
 
 // 404 handler
