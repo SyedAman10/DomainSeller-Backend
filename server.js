@@ -82,7 +82,14 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(bodyParser.json());
+// Body parser - EXCLUDE Stripe webhook routes (they need raw body for signature verification)
+app.use((req, res, next) => {
+  if (req.originalUrl === '/backend/stripe/webhook' || req.originalUrl === '/stripe/webhook') {
+    next(); // Skip body parsing for Stripe webhooks
+  } else {
+    bodyParser.json()(req, res, next);
+  }
+});
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Request logging middleware
