@@ -328,22 +328,42 @@ router.get('/payment/:paymentLinkId', async (req, res) => {
  * Stripe webhook endpoint for payment events
  */
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  console.log('📨 Stripe webhook received');
+  console.log('════════════════════════════════════════════════════════════');
+  console.log('📨 STRIPE WEBHOOK RECEIVED');
+  console.log('⏰ Time:', new Date().toISOString());
+  console.log('🔍 Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('📦 Body Size:', req.body.length, 'bytes');
+  console.log('════════════════════════════════════════════════════════════');
 
   const sig = req.headers['stripe-signature'];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.error('❌ STRIPE_WEBHOOK_SECRET not configured in environment!');
+    return res.status(500).send('Webhook secret not configured');
+  }
+
+  console.log('🔑 Webhook Secret:', webhookSecret ? `${webhookSecret.substring(0, 10)}...` : 'NOT SET');
+  console.log('✍️  Signature:', sig ? `${sig.substring(0, 20)}...` : 'NO SIGNATURE');
 
   let event;
 
   try { 
     // Verify webhook signature
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    console.log('✅ Webhook signature verified successfully!');
   } catch (err) {
     console.error('❌ Webhook signature verification failed:', err.message);
+    console.error('   This usually means:');
+    console.error('   1. Wrong webhook secret in .env');
+    console.error('   2. Webhook not configured for connected accounts');
+    console.error('   3. Request not from Stripe');
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   console.log(`📨 Event Type: ${event.type}`);
+  console.log(`🆔 Event ID: ${event.id}`);
+  console.log(`📅 Event Created: ${new Date(event.created * 1000).toISOString()}`);
 
   // Handle the event
   try {
@@ -2055,6 +2075,20 @@ router.get('/counter-offer/accept', async (req, res) => {
       </html>
     `);
   }
+});
+
+/**
+ * GET /api/stripe/webhook/test
+ * Test webhook endpoint accessibility
+ */
+router.get('/webhook/test', (req, res) => {
+  console.log('🧪 Webhook test endpoint accessed');
+  res.json({
+    success: true,
+    message: 'Webhook endpoint is accessible!',
+    url: `${req.protocol}://${req.get('host')}${req.originalUrl.replace('/test', '')}`,
+    timestamp: new Date().toISOString()
+  });
 });
 
 module.exports = router;
