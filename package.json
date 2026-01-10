@@ -13,6 +13,7 @@
     "test:duplicates": "node test-duplicate-prevention.js",
     "test:escrow": "node test-escrow-api.js",
     "test:escrow:simple": "node test-escrow-simple.js",
+    "test:webhook": "node test-payment-webhook.js",
     "setup:escrow-approvals": "node setup-escrow-approvals.js",
     "clean:campaigns": "node delete-all-campaigns.js"
   },

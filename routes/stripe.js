@@ -583,11 +583,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
               const closeCampaignsResult = await query(
                 `UPDATE campaigns 
                  SET status = 'completed',
-                     notes = CONCAT(COALESCE(notes, ''), E'\n\nAutomatically closed - Domain sold for $' || $1 || ' on ' || NOW()::date),
                      updated_at = NOW()
-                 WHERE domain_name = $2 AND status NOT IN ('completed', 'cancelled')
+                 WHERE domain_name = $1 AND status NOT IN ('completed', 'cancelled')
                  RETURNING campaign_id, campaign_name, status`,
-                [updatedPayment.amount, updatedPayment.domain_name]
+                [updatedPayment.domain_name]
               );
               
               if (closeCampaignsResult.rows.length > 0) {
@@ -605,14 +604,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                 const updateDomainResult = await query(
                   `UPDATE domains 
                    SET status = 'Sold',
-                       sold_at = NOW(),
-                       sold_price = $1,
-                       buyer_email = $2,
-                       buyer_name = $3,
                        updated_at = NOW()
-                   WHERE name = $4
+                   WHERE name = $1
                    RETURNING id, name, status`,
-                  [updatedPayment.amount, updatedPayment.buyer_email, updatedPayment.buyer_name, updatedPayment.domain_name]
+                  [updatedPayment.domain_name]
                 );
                 
                 if (updateDomainResult.rows.length > 0) {
@@ -624,7 +619,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                   console.log(`   ℹ️  Domain not found in domains table (campaign-only domain)`);
                 }
               } catch (domainError) {
-                console.log(`   ℹ️  Domains table may not exist or domain not listed: ${domainError.message}`);
+                console.log(`   ℹ️  Domains table may not exist or has different schema: ${domainError.message}`);
               }
               
               // 3. CREATE DOMAIN TRANSFER RECORD
@@ -632,20 +627,13 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
               try {
                 const transferResult = await query(
                   `INSERT INTO domain_transfers 
-                    (domain_name, seller_id, buyer_email, buyer_name, payment_id, status, transfer_step, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, 'pending_transfer', 'payment_completed', NOW(), NOW())
-                   RETURNING id
-                   ON CONFLICT (domain_name, seller_id) DO UPDATE
-                   SET status = 'pending_transfer',
-                       transfer_step = 'payment_completed',
-                       payment_id = EXCLUDED.payment_id,
-                       updated_at = NOW()
+                    (domain_name, seller_id, buyer_email, payment_id, status, transfer_step, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, 'pending_transfer', 'payment_completed', NOW(), NOW())
                    RETURNING id`,
                   [
                     updatedPayment.domain_name,
                     updatedPayment.user_id,
                     updatedPayment.buyer_email,
-                    updatedPayment.buyer_name,
                     updatedPayment.id
                   ]
                 );
