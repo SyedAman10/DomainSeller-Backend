@@ -1007,7 +1007,8 @@ router.post('/approvals/:id/approve', async (req, res) => {
       buyerEmail: request.buyer_email,
       buyerName: request.buyer_name,
       campaignId: campaignIdToUse,
-      userId: request.user_id
+      userId: request.user_id,
+      useEscrow: true  // EXPLICITLY enable escrow for approved payments
     });
 
     if (paymentResult.success) {
@@ -1156,7 +1157,8 @@ router.get('/approvals/:id/approve', async (req, res) => {
       buyerEmail: request.buyer_email,
       buyerName: request.buyer_name,
       campaignId: campaignIdToUse,
-      userId: request.user_id
+      userId: request.user_id,
+      useEscrow: true  // EXPLICITLY enable escrow for approved payments
     });
 
     if (paymentResult.success) {
