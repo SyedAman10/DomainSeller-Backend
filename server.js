@@ -19,6 +19,8 @@ const domainRoutes = require('./routes/domains');
 const referralRoutes = require('./routes/referrals');
 const leadRoutes = require('./routes/leads');
 const chatbotRoutes = require('./routes/chatbot');
+const adminRoutes = require('./routes/admin');
+const buyerRoutes = require('./routes/buyer');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -154,6 +156,11 @@ app.use('/backend/domains', domainRoutes);
 app.use('/backend/referrals', referralRoutes);
 app.use('/backend/leads', leadRoutes);
 app.use('/backend/chatbot', chatbotRoutes);
+app.use('/backend/admin', adminRoutes);
+app.use('/backend/buyer', buyerRoutes);
+
+// Buyer routes without prefix (for email links)
+app.use('/buyer', buyerRoutes);
 
 // Mailgun webhook routes (must be accessible without prefix for webhooks)
 app.use('/inbound', inboundRoutes);

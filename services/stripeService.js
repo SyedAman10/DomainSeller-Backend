@@ -143,7 +143,61 @@ const createPaymentLink = async (paymentData) => {
     buyerName,
     campaignId,
     userId,
-    applicationFeePercent = 0 // Platform fee (if you want to take a commission)
+    applicationFeePercent = 0, // Platform fee (if you want to take a commission)
+    useEscrow = true  // USE ESCROW BY DEFAULT FOR SECURITY
+  } = paymentData;
+
+  console.log('💳 CREATING STRIPE PAYMENT LINK');
+  console.log(`   Domain: ${domainName}`);
+  console.log(`   Amount: $${amount} ${currency}`);
+  console.log(`   Seller Account: ${sellerStripeAccountId}`);
+  console.log(`   Buyer: ${buyerName} (${buyerEmail})`);
+  console.log(`   Escrow Mode: ${useEscrow ? 'YES (Secure)' : 'NO (Direct)'}`);
+
+  try {
+    // ✅ USE ESCROW PAYMENT BY DEFAULT
+    if (useEscrow) {
+      console.log('🔐 Creating ESCROW payment (funds held until verification)...');
+      const { createEscrowPayment } = require('./escrowService');
+      
+      return await createEscrowPayment({
+        domainName,
+        amount,
+        currency,
+        buyerEmail,
+        buyerName,
+        campaignId,
+        userId,
+        sellerStripeAccountId
+      });
+    }
+    
+    // Legacy direct payment mode (kept for backwards compatibility)
+    console.log('⚠️ Creating DIRECT payment (legacy mode)...');
+    return await createDirectPaymentLegacy(paymentData);
+    
+  } catch (error) {
+    console.error('❌ Error creating payment link:', error.message);
+    throw error;
+  }
+};
+
+/**
+ * Create direct payment link (legacy, non-escrow) - INTERNAL USE ONLY
+ * @param {Object} paymentData - Payment details
+ * @returns {Promise<Object>} Payment link details
+ */
+const createDirectPaymentLegacy = async (paymentData) => {
+  const {
+    domainName,
+    amount,
+    currency = 'USD',
+    sellerStripeAccountId,
+    buyerEmail,
+    buyerName,
+    campaignId,
+    userId,
+    applicationFeePercent = 0
   } = paymentData;
 
   console.log('💳 CREATING STRIPE PAYMENT LINK');

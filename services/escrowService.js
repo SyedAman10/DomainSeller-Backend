@@ -1,452 +1,556 @@
-const axios = require('axios');
 const { query } = require('../config/database');
-require('dotenv').config();
+const Stripe = require('stripe');
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 /**
- * Escrow.com API Integration
- * Generates secure escrow payment links for domain transactions
+ * Escrow Payment Service
+ * Handles verification and transfer of funds after domain transfer confirmation
  */
-
-const ESCROW_API_URL = process.env.ESCROW_API_URL || 'https://api.escrow.com/2017-09-01';
-const ESCROW_EMAIL = process.env.ESCROW_EMAIL;
-const ESCROW_API_KEY = process.env.ESCROW_API_KEY;
 
 /**
- * Generate escrow payment link for a domain sale
- * @param {Object} transactionData - Transaction details
- * @returns {Promise<Object>} Escrow transaction details with payment link
+ * Create a new escrow transaction (payment to platform account)
+ * @param {Object} params - Transaction parameters
+ * @returns {Object} Payment link details
  */
-const createEscrowTransaction = async (transactionData) => {
-  const {
-    domainName,
-    buyerEmail,
-    buyerName,
-    sellerEmail,
-    sellerName,
-    amount,
-    currency = 'USD',
-    campaignId,
-    userId,
-    feePayer = 'buyer' // 'buyer', 'seller', or 'split'
-  } = transactionData;
-
-  console.log('💰 CREATING ESCROW TRANSACTION');
-  console.log(`   Domain: ${domainName}`);
-  console.log(`   Buyer: ${buyerName} (${buyerEmail})`);
-  console.log(`   Seller: ${sellerName} (${sellerEmail})`);
-  console.log(`   Amount: $${amount} ${currency}`);
-  console.log(`   Fee Payer: ${feePayer}`);
-
+const createEscrowPayment = async ({
+  domainName,
+  amount,
+  currency = 'USD',
+  buyerEmail,
+  buyerName,
+  campaignId,
+  userId,
+  sellerStripeAccountId
+}) => {
   try {
-    // Check if user has escrow configured
-    const userConfig = await getUserEscrowConfig(userId);
+    console.log('💰 Creating ESCROW payment (platform account)...');
+    console.log(`   Domain: ${domainName}`);
+    console.log(`   Amount: ${amount} ${currency}`);
+    console.log(`   Buyer: ${buyerName} (${buyerEmail})`);
     
-    // If user hasn't connected their account, check if global credentials exist
-    if (!userConfig.enabled && (!ESCROW_EMAIL || !ESCROW_API_KEY)) {
-      console.warn('⚠️  No escrow credentials configured (user or global) - using manual link');
-      return generateManualEscrowLink(transactionData);
-    }
-    
-    // Log which credentials we're using
-    if (userConfig.enabled) {
-      console.log('✅ Using user-specific escrow credentials');
-    } else {
-      console.log('✅ Using global escrow credentials from .env');
-    }
+    const amountInCents = Math.round(amount * 100);
 
-    // Use Escrow.com API to create transaction
-    const transactionAmount = parseFloat(amount);
-    
-    // Determine fee split based on feePayer
-    // split represents the percentage (0.0 to 1.0) each party pays
-    // For split fees, each party pays 0.5 (50%)
-    const feeSplits = [];
-    
-    if (feePayer === 'buyer') {
-      feeSplits.push({
-        type: 'escrow',
-        split: 1.0, // Buyer pays 100%
-        payer_customer: buyerEmail
-      });
-    } else if (feePayer === 'seller') {
-      feeSplits.push({
-        type: 'escrow',
-        split: 1.0, // Seller pays 100%
-        payer_customer: sellerEmail
-      });
-    } else {
-      // Split 50/50
-      feeSplits.push(
-        {
-          type: 'escrow',
-          split: 0.5, // Buyer pays 50%
-          payer_customer: buyerEmail
-        },
-        {
-          type: 'escrow',
-          split: 0.5, // Seller pays 50%
-          payer_customer: sellerEmail
-        }
-      );
-    }
-    
-    const escrowData = {
-      parties: [
-        {
-          role: 'buyer',
-          customer: buyerEmail,
-          initiator: false  // Buyer is not initiating
-        },
-        {
-          role: 'seller',
-          customer: sellerEmail,
-          initiator: true   // Seller initiates the transaction
-        }
-      ],
-      currency: currency.toLowerCase(),
-      description: `Purchase of domain name: ${domainName}`,
-      items: [
-        {
-          title: domainName,
-          description: `Domain name: ${domainName}`,
-          type: 'domain_name',
-          inspection_period: 259200, // 3 days in seconds
-          quantity: 1,
-          schedule: [
-            {
-              amount: transactionAmount,
-              payer_customer: buyerEmail,
-              beneficiary_customer: sellerEmail
-            }
-          ],
-          fees: feeSplits
-        }
-      ]
-    };
+    // Calculate platform fee (10%)
+    const platformFeePercent = 0.10;
+    const platformFeeAmount = amount * platformFeePercent;
+    const sellerPayoutAmount = amount - platformFeeAmount;
 
-    console.log('🚀 Calling Escrow.com API...');
+    console.log(`   Platform Fee (10%): $${platformFeeAmount.toFixed(2)}`);
+    console.log(`   Seller Payout: $${sellerPayoutAmount.toFixed(2)}`);
 
-    let response;
-    // Use user credentials if available, otherwise fall back to global credentials
-    const apiEmail = (userConfig.enabled && userConfig.email) ? userConfig.email : ESCROW_EMAIL;
-    const apiKey = (userConfig.enabled && userConfig.apiKey) ? userConfig.apiKey : ESCROW_API_KEY;
-    
-    if (apiEmail && apiKey) {
-      // Make actual API call if configured
-      console.log(`🔑 Using API credentials: ${apiEmail}`);
-      const authHeader = Buffer.from(`${apiEmail}:${apiKey}`).toString('base64');
-      
-      // Step 1: Create/verify buyer and seller as customers in Escrow.com
-      console.log('👥 Creating customers in Escrow.com...');
-      
-      try {
-        // Create buyer customer
-        await axios.post(
-          `${ESCROW_API_URL}/customer`,
-          {
-            email: buyerEmail,
-            first_name: buyerName.split(' ')[0] || buyerName,
-            last_name: buyerName.split(' ').slice(1).join(' ') || 'Buyer'
-          },
-          {
-            headers: {
-              'Authorization': `Basic ${authHeader}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-        console.log(`✅ Buyer customer created: ${buyerEmail}`);
-      } catch (error) {
-        // Customer might already exist, which is fine
-        if (error.response?.status === 422 || error.response?.status === 409) {
-          console.log(`ℹ️  Buyer customer already exists: ${buyerEmail}`);
-        } else {
-          console.warn(`⚠️  Could not create buyer customer: ${error.response?.data?.message || error.message}`);
+    // Create product in YOUR platform account (not seller's)
+    const product = await stripe.products.create({
+      name: `Domain: ${domainName}`,
+      description: `Purchase of domain ${domainName} via escrow`,
+      metadata: {
+        domain: domainName,
+        campaignId: campaignId,
+        userId: userId,
+        buyerEmail: buyerEmail,
+        buyerName: buyerName,
+        sellerStripeAccountId: sellerStripeAccountId,
+        escrow: 'true'
+      }
+    });
+
+    console.log(`✅ Product created in platform account: ${product.id}`);
+
+    // Create price
+    const price = await stripe.prices.create({
+      product: product.id,
+      unit_amount: amountInCents,
+      currency: currency.toLowerCase()
+    });
+
+    console.log(`✅ Price created: ${price.id}`);
+
+    // Create payment link (money goes to YOUR account)
+    const paymentLink = await stripe.paymentLinks.create({
+      line_items: [{
+        price: price.id,
+        quantity: 1
+      }],
+      metadata: {
+        domain: domainName,
+        campaignId: campaignId,
+        userId: userId,
+        buyerEmail: buyerEmail,
+        buyerName: buyerName,
+        sellerStripeAccountId: sellerStripeAccountId,
+        platformFee: platformFeeAmount.toFixed(2),
+        sellerPayout: sellerPayoutAmount.toFixed(2),
+        escrow: 'true'
+      },
+      after_completion: {
+        type: 'hosted_confirmation',
+        hosted_confirmation: {
+          custom_message: `Thank you for purchasing ${domainName}! Your payment is being held securely. The domain transfer verification process has begun. You'll receive updates via email.`
         }
       }
-      
-      try {
-        // Create seller customer
-        await axios.post(
-          `${ESCROW_API_URL}/customer`,
-          {
-            email: sellerEmail,
-            first_name: sellerName.split(' ')[0] || sellerName,
-            last_name: sellerName.split(' ').slice(1).join(' ') || 'Seller'
-          },
-          {
-            headers: {
-              'Authorization': `Basic ${authHeader}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-        console.log(`✅ Seller customer created: ${sellerEmail}`);
-      } catch (error) {
-        // Customer might already exist, which is fine
-        if (error.response?.status === 422 || error.response?.status === 409) {
-          console.log(`ℹ️  Seller customer already exists: ${sellerEmail}`);
-        } else {
-          console.warn(`⚠️  Could not create seller customer: ${error.response?.data?.message || error.message}`);
-        }
-      }
-      
-      console.log('✅ Customer verification complete');
-      
-      response = await axios.post(
-        `${ESCROW_API_URL}/transaction`,
-        escrowData,
-        {
-          headers: {
-            'Authorization': `Basic ${authHeader}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+    });
 
-      const transactionId = response.data.id;
-      // Use sandbox URL if in sandbox mode, production otherwise
-      const baseUrl = ESCROW_API_URL.includes('sandbox') ? 'https://www.escrow-sandbox.com' : 'https://www.escrow.com';
-      const escrowUrl = `${baseUrl}/transaction/${transactionId}`;
+    console.log(`✅ Escrow payment link created: ${paymentLink.id}`);
+    console.log(`🔗 URL: ${paymentLink.url}`);
 
-      console.log(`✅ Escrow transaction created: ${transactionId}`);
-      console.log(`🔗 Payment URL: ${escrowUrl}`);
-
-      // Store in database
-      await query(
-        `INSERT INTO escrow_transactions 
-          (transaction_id, campaign_id, buyer_email, domain_name, amount, currency, status, escrow_url, fee_payer, user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9)
-         RETURNING id`,
-        [transactionId, campaignId, buyerEmail, domainName, amount, currency, escrowUrl, feePayer, userId]
-      );
-
-      return {
-        success: true,
-        transactionId,
-        escrowUrl,
+    // Store in transactions table
+    const transactionResult = await query(
+      `INSERT INTO transactions 
+        (
+          campaign_id, 
+          buyer_email, 
+          buyer_name, 
+          domain_name, 
+          amount, 
+          currency,
+          payment_status,
+          verification_status,
+          platform_fee_amount,
+          seller_payout_amount,
+          stripe_payment_link_id,
+          stripe_product_id,
+          stripe_price_id,
+          seller_stripe_id,
+          user_id,
+          created_at,
+          updated_at
+        )
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending', 'pending_payment', $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+       RETURNING id`,
+      [
+        campaignId,
+        buyerEmail,
+        buyerName,
+        domainName,
         amount,
         currency,
-        feePayer,
-        message: 'Escrow transaction created successfully'
-      };
-    } else {
-      // Fallback to manual escrow link
-      console.warn('⚠️  Escrow API not configured - generating manual link');
-      return generateManualEscrowLink(transactionData);
-    }
-
-  } catch (error) {
-      console.error('❌ Error creating escrow transaction:', error.response?.data || error.message);
-      
-      // Log detailed error for debugging
-      if (error.response?.data?.errors) {
-        console.error('🔍 Detailed API errors:', JSON.stringify(error.response.data.errors, null, 2));
-      }
-      
-      // Fallback to manual escrow link
-      console.log('📝 Falling back to manual escrow link...');
-      return generateManualEscrowLink(transactionData);
-    }
-};
-
-/**
- * Generate a manual escrow link (for users without API access)
- * Since Escrow.com doesn't support pre-filled links, we provide their domain transaction page
- */
-const generateManualEscrowLink = (transactionData) => {
-  const {
-    domainName,
-    buyerEmail,
-    sellerEmail,
-    amount,
-    currency = 'USD',
-    feePayer = 'buyer'
-  } = transactionData;
-
-  // Escrow.com's main domain transaction page (verified working URL)
-  // Users will need to manually enter details there
-  const escrowUrl = `https://www.escrow.com/domains`;
-
-  console.log(`✅ Manual escrow link generated`);
-  console.log(`🔗 URL: ${escrowUrl}`);
-  console.log(`   Domain: ${domainName}`);
-  console.log(`   Amount: ${amount} ${currency}`);
-  console.log(`   Buyer: ${buyerEmail}`);
-  console.log(`   Seller: ${sellerEmail}`);
-
-  return {
-    success: true,
-    escrowUrl,
-    amount,
-    currency,
-    feePayer,
-    domainName,
-    buyerEmail,
-    sellerEmail,
-    isManual: true,
-    message: 'Manual escrow instructions generated (API not configured)'
-  };
-};
-
-/**
- * Get user's escrow configuration
- */
-const getUserEscrowConfig = async (userId) => {
-  try {
-    const result = await query(
-      `SELECT escrow_enabled, escrow_email, escrow_api_key, escrow_provider
-       FROM users
-       WHERE id = $1`,
-      [userId]
+        platformFeeAmount,
+        sellerPayoutAmount,
+        paymentLink.id,
+        product.id,
+        price.id,
+        sellerStripeAccountId,
+        userId
+      ]
     );
 
-    if (result.rows.length === 0) {
-      return {
-        enabled: false,
-        email: null,
-        apiKey: null,
-        provider: 'escrow.com'
-      };
-    }
+    const transactionId = transactionResult.rows[0].id;
 
-    const user = result.rows[0];
-    return {
-      enabled: user.escrow_enabled || false,
-      email: user.escrow_email,
-      apiKey: user.escrow_api_key,
-      provider: user.escrow_provider || 'escrow.com'
-    };
-  } catch (error) {
-    console.error('Error fetching escrow config:', error);
-    return {
-      enabled: false,
-      email: null,
-      apiKey: null,
-      provider: 'escrow.com'
-    };
-  }
-};
-
-/**
- * Update user's escrow account settings
- */
-const updateUserEscrowAccount = async (userId, escrowData) => {
-  const {
-    escrowEmail,
-    escrowApiKey,
-    escrowApiSecret,
-    escrowProvider = 'escrow.com',
-    enabled = true
-  } = escrowData;
-
-  console.log(`🔧 Updating escrow account for user ${userId}...`);
-
-  try {
-    const result = await query(
-      `UPDATE users 
-       SET escrow_email = $1,
-           escrow_api_key = $2,
-           escrow_api_secret = $3,
-           escrow_provider = $4,
-           escrow_enabled = $5,
-           updated_at = NOW()
-       WHERE id = $6
-       RETURNING id, escrow_email, escrow_enabled, escrow_provider`,
-      [escrowEmail, escrowApiKey, escrowApiSecret, escrowProvider, enabled, userId]
+    // Log in verification history
+    await query(
+      `INSERT INTO verification_history 
+        (transaction_id, action, previous_status, new_status, notes, created_at)
+       VALUES ($1, 'transaction_created', NULL, 'pending_payment', 'Escrow payment link created', NOW())`,
+      [transactionId]
     );
 
-    if (result.rows.length === 0) {
-      throw new Error('User not found');
-    }
-
-    console.log('✅ Escrow account updated successfully');
+    console.log(`✅ Transaction created with ID: ${transactionId}`);
 
     return {
       success: true,
-      user: result.rows[0]
+      transactionId: transactionId,
+      paymentLinkId: paymentLink.id,
+      paymentUrl: paymentLink.url,
+      amount,
+      currency,
+      platformFee: platformFeeAmount,
+      sellerPayout: sellerPayoutAmount,
+      message: 'Escrow payment link created successfully'
     };
   } catch (error) {
-    console.error('❌ Error updating escrow account:', error);
+    console.error('❌ Error creating escrow payment:', error.message);
     throw error;
   }
 };
 
 /**
- * Get escrow transaction status
+ * Mark transaction as payment received and awaiting verification
+ * @param {String} paymentIntentId - Stripe payment intent ID
+ * @returns {Object} Updated transaction
  */
-const getEscrowTransactionStatus = async (transactionId) => {
+const markPaymentReceived = async (paymentIntentId) => {
   try {
+    console.log(`💰 Marking payment received: ${paymentIntentId}`);
+
     const result = await query(
-      `SELECT * FROM escrow_transactions WHERE transaction_id = $1`,
+      `UPDATE transactions 
+       SET 
+         payment_status = 'paid',
+         verification_status = 'payment_received',
+         stripe_payment_intent_id = $1,
+         paid_at = NOW(),
+         updated_at = NOW()
+       WHERE stripe_payment_link_id = (
+         SELECT payment_link FROM checkout_sessions WHERE payment_intent = $1 LIMIT 1
+       ) OR stripe_payment_intent_id = $1
+       RETURNING *`,
+      [paymentIntentId]
+    );
+
+    if (result.rows.length === 0) {
+      // Try to find by metadata
+      console.log('⚠️ Transaction not found by payment_intent, trying by payment_link...');
+      return null;
+    }
+
+    const transaction = result.rows[0];
+
+    // Log in verification history
+    await query(
+      `INSERT INTO verification_history 
+        (transaction_id, action, previous_status, new_status, notes, created_at)
+       VALUES ($1, 'payment_received', 'pending_payment', 'payment_received', 'Payment completed, awaiting verification', NOW())`,
+      [transaction.id]
+    );
+
+    // Create admin notification
+    await query(
+      `INSERT INTO admin_notifications 
+        (type, title, message, transaction_id, priority, created_at)
+       VALUES ('payment_received', 'New Payment Awaiting Verification', $1, $2, 'high', NOW())`,
+      [
+        `Payment of $${transaction.amount} received for ${transaction.domain_name}. Verification required before transferring funds to seller.`,
+        transaction.id
+      ]
+    );
+
+    console.log(`✅ Transaction ${transaction.id} marked as payment received`);
+    console.log(`📋 Verification status: ${transaction.verification_status}`);
+
+    return transaction;
+  } catch (error) {
+    console.error('❌ Error marking payment received:', error);
+    throw error;
+  }
+};
+
+/**
+ * Verify domain transfer and transfer funds to seller
+ * @param {Number} transactionId - Transaction ID
+ * @param {Number} adminUserId - Admin user ID performing verification
+ * @param {Boolean} verified - Whether domain was successfully transferred
+ * @param {String} notes - Verification notes
+ * @returns {Object} Result with transfer or refund details
+ */
+const verifyAndTransfer = async (transactionId, adminUserId, verified, notes = '') => {
+  try {
+    console.log(`🔍 Processing verification for transaction ${transactionId}...`);
+    console.log(`   Verified: ${verified}`);
+    console.log(`   Admin: ${adminUserId}`);
+
+    // Get transaction details
+    const txResult = await query(
+      `SELECT * FROM transactions WHERE id = $1`,
+      [transactionId]
+    );
+
+    if (txResult.rows.length === 0) {
+      throw new Error('Transaction not found');
+    }
+
+    const transaction = txResult.rows[0];
+
+    if (transaction.verification_status === 'verified' || transaction.verification_status === 'funds_transferred') {
+      throw new Error('Transaction already verified and processed');
+    }
+
+    if (transaction.payment_status !== 'paid') {
+      throw new Error('Payment has not been received yet');
+    }
+
+    if (verified) {
+      // ✅ DOMAIN TRANSFER VERIFIED - Transfer funds to seller
+      console.log(`✅ Domain transfer verified! Transferring funds to seller...`);
+
+      const sellerPayoutCents = Math.round(transaction.seller_payout_amount * 100);
+
+      // Create transfer to seller's connected account
+      const transfer = await stripe.transfers.create({
+        amount: sellerPayoutCents,
+        currency: transaction.currency.toLowerCase(),
+        destination: transaction.seller_stripe_id,
+        description: `Domain sale: ${transaction.domain_name}`,
+        metadata: {
+          transaction_id: transactionId,
+          domain_name: transaction.domain_name,
+          buyer_email: transaction.buyer_email,
+          platform_fee: transaction.platform_fee_amount
+        },
+        transfer_group: `escrow_tx_${transactionId}`
+      });
+
+      console.log(`✅ Transfer created: ${transfer.id}`);
+      console.log(`   Amount: $${transaction.seller_payout_amount}`);
+      console.log(`   Destination: ${transaction.seller_stripe_id}`);
+
+      // Update transaction
+      await query(
+        `UPDATE transactions 
+         SET 
+           verification_status = 'verified',
+           transfer_status = 'completed',
+           transfer_id = $1,
+           verified_at = NOW(),
+           verified_by = $2,
+           verification_notes = $3,
+           verification_method = 'admin_manual',
+           updated_at = NOW()
+         WHERE id = $4`,
+        [transfer.id, adminUserId, notes, transactionId]
+      );
+
+      // Log in verification history
+      await query(
+        `INSERT INTO verification_history 
+          (transaction_id, action, previous_status, new_status, performed_by, notes, metadata, created_at)
+         VALUES ($1, 'domain_verified_funds_transferred', $2, 'verified', $3, $4, $5, NOW())`,
+        [
+          transactionId,
+          transaction.verification_status,
+          adminUserId,
+          notes,
+          JSON.stringify({ transfer_id: transfer.id, amount: transaction.seller_payout_amount })
+        ]
+      );
+
+      // Update admin notification
+      await query(
+        `UPDATE admin_notifications 
+         SET is_read = true, read_at = NOW(), read_by = $1
+         WHERE transaction_id = $2 AND type = 'payment_received'`,
+        [adminUserId, transactionId]
+      );
+
+      // Create new notification
+      await query(
+        `INSERT INTO admin_notifications 
+          (type, title, message, transaction_id, priority, created_at)
+         VALUES ('funds_transferred', 'Funds Transferred to Seller', $1, $2, 'normal', NOW())`,
+        [
+          `Domain ${transaction.domain_name}: Verification complete. $${transaction.seller_payout_amount} transferred to seller.`,
+          transactionId
+        ]
+      );
+
+      console.log(`✅ Verification complete! Funds transferred to seller.`);
+
+      return {
+        success: true,
+        action: 'transferred',
+        transferId: transfer.id,
+        amount: transaction.seller_payout_amount,
+        sellerStripeId: transaction.seller_stripe_id,
+        message: 'Domain transfer verified and funds transferred to seller'
+      };
+
+    } else {
+      // ❌ DOMAIN TRANSFER FAILED - Refund buyer
+      console.log(`❌ Domain transfer verification failed. Issuing refund...`);
+
+      if (!transaction.stripe_payment_intent_id) {
+        throw new Error('No payment intent ID found for refund');
+      }
+
+      // Create refund
+      const refund = await stripe.refunds.create({
+        payment_intent: transaction.stripe_payment_intent_id,
+        reason: 'requested_by_customer',
+        metadata: {
+          transaction_id: transactionId,
+          domain_name: transaction.domain_name,
+          reason: notes || 'Domain transfer verification failed'
+        }
+      });
+
+      console.log(`✅ Refund created: ${refund.id}`);
+      console.log(`   Amount: $${transaction.amount}`);
+
+      // Update transaction
+      await query(
+        `UPDATE transactions 
+         SET 
+           verification_status = 'verification_failed',
+           payment_status = 'refunded',
+           refund_id = $1,
+           verified_at = NOW(),
+           verified_by = $2,
+           verification_notes = $3,
+           verification_method = 'admin_manual',
+           updated_at = NOW()
+         WHERE id = $4`,
+        [refund.id, adminUserId, notes, transactionId]
+      );
+
+      // Log in verification history
+      await query(
+        `INSERT INTO verification_history 
+          (transaction_id, action, previous_status, new_status, performed_by, notes, metadata, created_at)
+         VALUES ($1, 'verification_failed_refund_issued', $2, 'verification_failed', $3, $4, $5, NOW())`,
+        [
+          transactionId,
+          transaction.verification_status,
+          adminUserId,
+          notes,
+          JSON.stringify({ refund_id: refund.id, amount: transaction.amount })
+        ]
+      );
+
+      // Update admin notification
+      await query(
+        `UPDATE admin_notifications 
+         SET is_read = true, read_at = NOW(), read_by = $1
+         WHERE transaction_id = $2 AND type = 'payment_received'`,
+        [adminUserId, transactionId]
+      );
+
+      // Create new notification
+      await query(
+        `INSERT INTO admin_notifications 
+          (type, title, message, transaction_id, priority, created_at)
+         VALUES ('refund_issued', 'Refund Issued to Buyer', $1, $2, 'high', NOW())`,
+        [
+          `Domain ${transaction.domain_name}: Verification failed. $${transaction.amount} refunded to buyer.`,
+          transactionId
+        ]
+      );
+
+      console.log(`✅ Refund issued to buyer.`);
+
+      return {
+        success: true,
+        action: 'refunded',
+        refundId: refund.id,
+        amount: transaction.amount,
+        message: 'Domain transfer failed and buyer refunded'
+      };
+    }
+  } catch (error) {
+    console.error('❌ Error in verify and transfer:', error);
+    throw error;
+  }
+};
+
+/**
+ * Buyer confirms domain received
+ * @param {Number} transactionId - Transaction ID
+ * @returns {Object} Updated transaction
+ */
+const buyerConfirmReceived = async (transactionId) => {
+  try {
+    console.log(`✅ Buyer confirming domain received for transaction ${transactionId}`);
+
+    const result = await query(
+      `UPDATE transactions 
+       SET 
+         buyer_confirmed = true,
+         buyer_confirmed_at = NOW(),
+         verification_status = 'buyer_confirmed',
+         updated_at = NOW()
+       WHERE id = $1 AND payment_status = 'paid'
+       RETURNING *`,
       [transactionId]
     );
 
     if (result.rows.length === 0) {
-      return null;
+      throw new Error('Transaction not found or payment not completed');
     }
 
-    return result.rows[0];
+    const transaction = result.rows[0];
+
+    // Log in verification history
+    await query(
+      `INSERT INTO verification_history 
+        (transaction_id, action, previous_status, new_status, notes, created_at)
+       VALUES ($1, 'buyer_confirmed', $2, 'buyer_confirmed', 'Buyer confirmed domain receipt', NOW())`,
+      [transactionId, transaction.verification_status]
+    );
+
+    // Create admin notification for final verification
+    await query(
+      `INSERT INTO admin_notifications 
+        (type, title, message, transaction_id, priority, created_at)
+       VALUES ('buyer_confirmed', 'Buyer Confirmed Domain Receipt', $1, $2, 'high', NOW())`,
+      [
+        `Buyer confirmed receipt of ${transaction.domain_name}. Ready for final admin verification and fund transfer.`,
+        transactionId
+      ]
+    );
+
+    console.log(`✅ Buyer confirmation recorded`);
+
+    return {
+      success: true,
+      transaction: transaction,
+      message: 'Buyer confirmation recorded. Awaiting final admin verification.'
+    };
   } catch (error) {
-    console.error('Error fetching escrow transaction:', error);
+    console.error('❌ Error recording buyer confirmation:', error);
     throw error;
   }
 };
 
 /**
- * Update escrow transaction status (called by webhooks)
+ * Get pending verifications for admin dashboard
+ * @returns {Array} Pending transactions
  */
-const updateEscrowTransactionStatus = async (transactionId, status) => {
-  console.log(`📝 Updating escrow transaction ${transactionId} to status: ${status}`);
-
+const getPendingVerifications = async () => {
   try {
-    const result = await query(
-      `UPDATE escrow_transactions 
-       SET status = $1, updated_at = NOW()
-       WHERE transaction_id = $2
-       RETURNING *`,
-      [status, transactionId]
-    );
-
-    if (result.rows.length === 0) {
-      console.warn(`⚠️  Transaction ${transactionId} not found`);
-      return null;
-    }
-
-    console.log(`✅ Transaction status updated to: ${status}`);
-    return result.rows[0];
-  } catch (error) {
-    console.error('❌ Error updating transaction status:', error);
-    throw error;
-  }
-};
-
-/**
- * Get all escrow transactions for a campaign
- */
-const getCampaignEscrowTransactions = async (campaignId) => {
-  try {
-    const result = await query(
-      `SELECT * FROM escrow_transactions 
-       WHERE campaign_id = $1
-       ORDER BY created_at DESC`,
-      [campaignId]
-    );
+    const result = await query(`
+      SELECT 
+        t.*,
+        u.username as seller_username,
+        u.email as seller_email,
+        u.first_name as seller_first_name,
+        c.campaign_name,
+        (SELECT COUNT(*) FROM verification_history vh WHERE vh.transaction_id = t.id) as history_count
+      FROM transactions t
+      LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN campaigns c ON t.campaign_id = c.campaign_id
+      WHERE t.verification_status IN ('payment_received', 'buyer_confirmed')
+        AND t.payment_status = 'paid'
+      ORDER BY 
+        CASE 
+          WHEN t.buyer_confirmed = true THEN 1 
+          ELSE 2 
+        END,
+        t.paid_at DESC
+    `);
 
     return result.rows;
   } catch (error) {
-    console.error('Error fetching campaign escrow transactions:', error);
+    console.error('❌ Error getting pending verifications:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get transaction verification history
+ * @param {Number} transactionId - Transaction ID
+ * @returns {Array} History records
+ */
+const getVerificationHistory = async (transactionId) => {
+  try {
+    const result = await query(`
+      SELECT 
+        vh.*,
+        u.username as performed_by_username
+      FROM verification_history vh
+      LEFT JOIN users u ON vh.performed_by = u.id
+      WHERE vh.transaction_id = $1
+      ORDER BY vh.created_at DESC
+    `, [transactionId]);
+
+    return result.rows;
+  } catch (error) {
+    console.error('❌ Error getting verification history:', error);
     throw error;
   }
 };
 
 module.exports = {
-  createEscrowTransaction,
-  generateManualEscrowLink,
-  getUserEscrowConfig,
-  updateUserEscrowAccount,
-  getEscrowTransactionStatus,
-  updateEscrowTransactionStatus,
-  getCampaignEscrowTransactions
+  createEscrowPayment,
+  markPaymentReceived,
+  verifyAndTransfer,
+  buyerConfirmReceived,
+  getPendingVerifications,
+  getVerificationHistory
 };
-
