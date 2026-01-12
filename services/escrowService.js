@@ -93,6 +93,9 @@ const createEscrowPayment = async ({
     console.log(`🔗 URL: ${paymentLink.url}`);
 
     // Store in transactions table
+    // Note: campaign_id might be a string (legacy) or integer, handle both
+    const campaignIdInt = campaignId ? (typeof campaignId === 'string' ? null : parseInt(campaignId)) : null;
+    
     const transactionResult = await query(
       `INSERT INTO transactions 
         (
@@ -117,7 +120,7 @@ const createEscrowPayment = async ({
        VALUES ($1, $2, $3, $4, $5, $6, 'pending', 'pending_payment', $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
        RETURNING id`,
       [
-        campaignId,
+        campaignIdInt,
         buyerEmail,
         buyerName,
         domainName,

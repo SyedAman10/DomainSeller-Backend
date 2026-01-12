@@ -980,6 +980,25 @@ router.post('/approvals/:id/approve', async (req, res) => {
     const { createPaymentLink } = require('../services/stripeService');
     const { sendEmail } = require('../services/emailService');
 
+    console.log('📋 Approval request data:');
+    console.log('   Campaign ID:', request.campaign_id, 'Type:', typeof request.campaign_id);
+    console.log('   User ID:', request.user_id);
+    console.log('   Domain:', request.domain_name);
+
+    // Handle campaign_id - convert string to integer or null
+    let campaignIdToUse = null;
+    if (request.campaign_id) {
+      if (typeof request.campaign_id === 'string') {
+        const parsed = parseInt(request.campaign_id);
+        campaignIdToUse = isNaN(parsed) ? null : parsed;
+        if (isNaN(parsed)) {
+          console.log('⚠️  Campaign ID is non-numeric string, setting to null');
+        }
+      } else {
+        campaignIdToUse = request.campaign_id;
+      }
+    }
+
     const paymentResult = await createPaymentLink({
       domainName: request.domain_name,
       amount: request.amount,
@@ -987,7 +1006,7 @@ router.post('/approvals/:id/approve', async (req, res) => {
       sellerStripeAccountId: userConfig.accountId,
       buyerEmail: request.buyer_email,
       buyerName: request.buyer_name,
-      campaignId: request.campaign_id,
+      campaignId: campaignIdToUse,
       userId: request.user_id
     });
 
@@ -1118,6 +1137,17 @@ router.get('/approvals/:id/approve', async (req, res) => {
     const { createPaymentLink } = require('../services/stripeService');
     const { sendEmail } = require('../services/emailService');
 
+    // Handle campaign_id - convert string to integer or null
+    let campaignIdToUse = null;
+    if (request.campaign_id) {
+      if (typeof request.campaign_id === 'string') {
+        const parsed = parseInt(request.campaign_id);
+        campaignIdToUse = isNaN(parsed) ? null : parsed;
+      } else {
+        campaignIdToUse = request.campaign_id;
+      }
+    }
+
     const paymentResult = await createPaymentLink({
       domainName: request.domain_name,
       amount: request.amount,
@@ -1125,7 +1155,7 @@ router.get('/approvals/:id/approve', async (req, res) => {
       sellerStripeAccountId: userConfig.accountId,
       buyerEmail: request.buyer_email,
       buyerName: request.buyer_name,
-      campaignId: request.campaign_id,
+      campaignId: campaignIdToUse,
       userId: request.user_id
     });
 
