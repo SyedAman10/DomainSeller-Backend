@@ -849,8 +849,10 @@ router.post('/webhook', async (req, res) => {
               console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             }
           }
-        }
-        break;
+        } // END if (updatedPayment) from legacy flow
+      } // END else (legacy direct payment flow)
+      
+      break; // END case 'checkout.session.completed'
 
       case 'account.updated':
         const account = event.data.object;
