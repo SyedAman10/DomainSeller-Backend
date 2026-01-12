@@ -174,6 +174,7 @@ const markPaymentReceived = async (paymentIntentId) => {
   try {
     console.log(`💰 Marking payment received: ${paymentIntentId}`);
 
+    // Try to find transaction by payment_intent_id first
     const result = await query(
       `UPDATE transactions 
        SET 
@@ -182,16 +183,19 @@ const markPaymentReceived = async (paymentIntentId) => {
          stripe_payment_intent_id = $1,
          paid_at = NOW(),
          updated_at = NOW()
-       WHERE stripe_payment_link_id = (
-         SELECT payment_link FROM checkout_sessions WHERE payment_intent = $1 LIMIT 1
-       ) OR stripe_payment_intent_id = $1
+       WHERE stripe_payment_intent_id = $1 OR id = (
+         SELECT id FROM transactions 
+         WHERE stripe_payment_link_id IS NOT NULL 
+         AND stripe_payment_intent_id IS NULL
+         ORDER BY created_at DESC 
+         LIMIT 1
+       )
        RETURNING *`,
       [paymentIntentId]
     );
 
     if (result.rows.length === 0) {
-      // Try to find by metadata
-      console.log('⚠️ Transaction not found by payment_intent, trying by payment_link...');
+      console.log('⚠️ Transaction not found by payment_intent');
       return null;
     }
 
