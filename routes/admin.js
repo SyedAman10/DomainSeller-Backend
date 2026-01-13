@@ -54,7 +54,7 @@ router.get('/verifications/:transactionId', async (req, res) => {
         c.campaign_name
       FROM transactions t
       LEFT JOIN users u ON t.user_id = u.id
-      LEFT JOIN campaigns c ON t.campaign_id = c.campaign_id
+      LEFT JOIN campaigns c ON c.id = t.campaign_id
       WHERE t.id = $1
     `, [transactionId]);
 
