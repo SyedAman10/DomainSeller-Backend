@@ -26,7 +26,7 @@ const createEscrowPayment = async ({
     console.log('💰 Creating ESCROW payment (platform account)...');
   console.log(`   Domain: ${domainName}`);
     console.log(`   Amount: ${amount} ${currency}`);
-    console.log(`   Buyer: ${buyerName} (${buyerEmail})`);
+  console.log(`   Buyer: ${buyerName} (${buyerEmail})`);
     
     const amountInCents = Math.round(amount * 100);
     
@@ -553,7 +553,7 @@ const getPendingVerifications = async () => {
         (SELECT COUNT(*) FROM verification_history vh WHERE vh.transaction_id = t.id) as history_count
       FROM transactions t
       LEFT JOIN users u ON t.user_id = u.id
-      LEFT JOIN campaigns c ON t.campaign_id = c.campaign_id
+      LEFT JOIN campaigns c ON c.id = t.campaign_id
       WHERE t.verification_status IN ('payment_received', 'buyer_confirmed')
         AND t.payment_status = 'paid'
       ORDER BY 
