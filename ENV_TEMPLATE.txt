@@ -15,6 +15,11 @@ STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
+# Stripe Test Mode Options
+# Set to 'true' to simulate transfers in test mode (bypasses insufficient balance errors)
+# Only works in test mode, has no effect in production
+SKIP_STRIPE_TRANSFER_IN_TEST=false
+
 # Escrow.com Integration (OPTIONAL - legacy, Stripe is preferred)
 ESCROW_API_URL=https://api.escrow.com/2017-09-01
 ESCROW_EMAIL=your-email@example.com

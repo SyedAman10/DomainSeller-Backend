@@ -270,22 +270,106 @@ const verifyAndTransfer = async (transactionId, adminUserId, verified, notes = '
 
       const sellerPayoutCents = Math.round(transaction.seller_payout_amount * 100);
 
-      // Create transfer to seller's connected account
-      const transfer = await stripe.transfers.create({
-        amount: sellerPayoutCents,
-        currency: transaction.currency.toLowerCase(),
-        destination: transaction.seller_stripe_id,
-        description: `Domain sale: ${transaction.domain_name}`,
-        metadata: {
-          transaction_id: transactionId,
-          domain_name: transaction.domain_name,
-          buyer_email: transaction.buyer_email,
-          platform_fee: transaction.platform_fee_amount
-        },
-        transfer_group: `escrow_tx_${transactionId}`
-      });
+      let transfer;
+      
+      // Check if we're in test mode and should simulate the transfer
+      const isTestMode = process.env.STRIPE_SECRET_KEY?.includes('_test_');
+      const skipTransferInTest = process.env.SKIP_STRIPE_TRANSFER_IN_TEST === 'true';
+      
+      if (isTestMode && skipTransferInTest) {
+        console.log('⚠️  TEST MODE: Simulating transfer (SKIP_STRIPE_TRANSFER_IN_TEST=true)');
+        console.log(`   Would transfer: $${transaction.seller_payout_amount} to ${transaction.seller_stripe_id}`);
+        
+        // Simulate a successful transfer
+        transfer = {
+          id: `simulated_tr_${Date.now()}`,
+          amount: sellerPayoutCents,
+          currency: transaction.currency.toLowerCase(),
+          destination: transaction.seller_stripe_id,
+          object: 'transfer',
+          created: Math.floor(Date.now() / 1000),
+          description: `[SIMULATED] Domain sale: ${transaction.domain_name}`,
+          metadata: {
+            transaction_id: transactionId,
+            domain_name: transaction.domain_name,
+            buyer_email: transaction.buyer_email,
+            platform_fee: transaction.platform_fee_amount,
+            simulated: true
+          }
+        };
+        
+        console.log(`✅ Transfer simulated: ${transfer.id}`);
+      } else {
+        // Real transfer
+        try {
+          // Create transfer to seller's connected account
+          transfer = await stripe.transfers.create({
+            amount: sellerPayoutCents,
+            currency: transaction.currency.toLowerCase(),
+            destination: transaction.seller_stripe_id,
+            description: `Domain sale: ${transaction.domain_name}`,
+            metadata: {
+              transaction_id: transactionId,
+              domain_name: transaction.domain_name,
+              buyer_email: transaction.buyer_email,
+              platform_fee: transaction.platform_fee_amount
+            },
+            transfer_group: `escrow_tx_${transactionId}`
+          });
 
-      console.log(`✅ Transfer created: ${transfer.id}`);
+          console.log(`✅ Transfer created: ${transfer.id}`);
+        } catch (stripeError) {
+          if (stripeError.code === 'balance_insufficient') {
+            console.error('❌ INSUFFICIENT BALANCE IN TEST MODE');
+            console.log('\n💡 TEST MODE SOLUTION:');
+            console.log('   Option 1: Add SKIP_STRIPE_TRANSFER_IN_TEST=true to .env to simulate transfers');
+            console.log('   Option 2: Add funds using test card 4000000000000077\n');
+            console.log('   Steps for Option 2:');
+            console.log('   1. Go to: https://dashboard.stripe.com/test/payments');
+            console.log('   2. Create a payment with card 4000000000000077');
+            console.log('   3. Amount: At least $' + transaction.seller_payout_amount);
+            console.log('   4. Try verification again after payment completes\n');
+            
+            // Update transaction to indicate manual action needed
+            await query(
+              `UPDATE transactions 
+               SET 
+                 verification_status = 'pending_manual_transfer',
+                 verification_notes = $1,
+                 verified_at = NOW(),
+                 verified_by = $2,
+                 updated_at = NOW()
+               WHERE id = $3`,
+              [
+                `${notes}\n\n[ADMIN ACTION REQUIRED] Insufficient balance in Stripe test mode. Either add SKIP_STRIPE_TRANSFER_IN_TEST=true to .env or add test funds using card 4000000000000077.`,
+                adminUserId,
+                transactionId
+              ]
+            );
+
+            // Log in history
+            await query(
+              `INSERT INTO verification_history 
+                (transaction_id, action, previous_status, new_status, performed_by, notes, created_at)
+               VALUES ($1, 'verification_approved_pending_transfer', $2, 'pending_manual_transfer', $3, $4, NOW())`,
+              [
+                transactionId,
+                transaction.verification_status,
+                adminUserId,
+                'Verification approved but transfer failed due to insufficient test mode balance. Set SKIP_STRIPE_TRANSFER_IN_TEST=true or add test funds.'
+              ]
+            );
+
+            throw new Error(
+              'Test mode: Insufficient balance. Add SKIP_STRIPE_TRANSFER_IN_TEST=true to .env or use test card 4000000000000077.'
+            );
+          }
+
+          // Re-throw other errors
+          throw stripeError;
+        }
+      }
+      
       console.log(`   Amount: $${transaction.seller_payout_amount}`);
       console.log(`   Destination: ${transaction.seller_stripe_id}`);
 
