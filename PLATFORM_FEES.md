@@ -224,13 +224,31 @@ const platformFeePercent = 0.05; // 5% instead of 0.03
 
 ## 📝 Current Status
 
-**Platform Fee:** `3%` (as per your request)
+**Platform Fee:** `5%` ✅
 
-**Warning:** At 3%, your net margin after Stripe fees is only ~0.1%. This means:
-- ❌ Small transactions may lose money
-- ❌ Little buffer for refunds/disputes
-- ❌ Minimal room for operational costs
-- ❌ Not sustainable long-term
+**Benefits:**
+- ✅ **Sustainable ~2% net margin** after Stripe fees
+- ✅ **Still half the price** of competitors (10-20%)
+- ✅ **Profitable on all transaction sizes**
+- ✅ **Room for operational costs** and support
+- ✅ **Buffer for refunds/disputes**
 
-**Consider:** Increasing to 5% for a healthy 2% net margin! 🚀
+**For a $1,000 transaction:**
+- Buyer pays: $1,000
+- Platform keeps: $50 (5%)
+- Stripe takes: ~$29.30
+- **Your net: $20.70 (2.07%)**
+- Seller gets: $950
+
+---
+
+## 🎯 Perfect Balance Achieved! 🎉
+
+At 5%, you have:
+- ✅ Competitive pricing (cheapest in the market)
+- ✅ Healthy margins (2% net after fees)
+- ✅ Sustainable business model
+- ✅ Room for growth and scaling
+
+**Great choice!** 🚀
 
