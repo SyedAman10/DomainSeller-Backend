@@ -97,18 +97,23 @@ Auto-triggers transfer to seller
 ### **How You Make Money:**
 
 For every successful transaction:
-1. **Platform Fee:** 5% of transaction amount
+1. **Platform Fee:** 3% of transaction amount
 2. **Deducted automatically** during fund transfer to seller
 3. **Example:**
    - Buyer pays: $1,000
-   - Platform keeps: $50 (5%)
-   - Seller receives: $950
-   - Stripe fee: ~$30 (paid from platform account)
+   - Platform keeps: $30 (3%)
+   - Seller receives: $970
+   - Stripe fee: ~$29.30 (paid from platform account)
+   - **Net platform revenue: $0.70 (0.07%)**
+
+⚠️ **Note:** With 3% fee, after Stripe's ~2.9% processing fee, your net margin is very thin (~0.1%). Consider increasing to 5% for sustainable margins. See `PLATFORM_FEES.md` for detailed analysis.
 
 ### **Revenue Tracking:**
 ```sql
 SELECT 
-  SUM(amount * 0.05) as total_platform_revenue,
+  SUM(amount * 0.03) as total_platform_revenue,
+  SUM(amount * 0.029) as estimated_stripe_fees,
+  SUM(amount * 0.001) as estimated_net_revenue,
   COUNT(*) as successful_transactions
 FROM transactions
 WHERE verification_status = 'transferred';

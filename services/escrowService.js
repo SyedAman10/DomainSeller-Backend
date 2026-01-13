@@ -30,12 +30,12 @@ const createEscrowPayment = async ({
     
     const amountInCents = Math.round(amount * 100);
     
-    // Calculate platform fee (10%)
-    const platformFeePercent = 0.10;
+    // Calculate platform fee (3%)
+    const platformFeePercent = 0.03;
     const platformFeeAmount = amount * platformFeePercent;
     const sellerPayoutAmount = amount - platformFeeAmount;
 
-    console.log(`   Platform Fee (10%): $${platformFeeAmount.toFixed(2)}`);
+    console.log(`   Platform Fee (3%): $${platformFeeAmount.toFixed(2)}`);
     console.log(`   Seller Payout: $${sellerPayoutAmount.toFixed(2)}`);
 
     // Create product in YOUR platform account (not seller's)
