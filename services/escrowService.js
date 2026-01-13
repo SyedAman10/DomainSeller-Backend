@@ -195,7 +195,7 @@ const markPaymentReceived = async (paymentIntentId) => {
     );
 
     if (result.rows.length === 0) {
-      console.log('⚠️ Transaction not found by payment_intent');
+      console.log(`📝 Note: Payment ${paymentIntentId} not found in escrow transactions table (this is normal for non-escrow payments)`);
       return null;
     }
 
@@ -336,7 +336,49 @@ const verifyAndTransfer = async (transactionId, adminUserId, verified, notes = '
           `Domain ${transaction.domain_name}: Verification complete. $${transaction.seller_payout_amount} transferred to seller.`,
           transactionId
         ]
-    );
+      );
+
+      // ✅ MARK DOMAIN AS SOLD AND PAUSE CAMPAIGNS
+      console.log(`📋 Marking domain ${transaction.domain_name} as sold...`);
+      
+      // Pause all campaigns for this domain
+      const pausedCampaigns = await query(
+        `UPDATE campaigns 
+         SET 
+           status = 'paused',
+           paused_at = NOW(),
+           paused_reason = 'Domain sold via escrow transaction',
+           updated_at = NOW()
+         WHERE domain_name = $1 AND status != 'paused'
+         RETURNING campaign_id, campaign_name`,
+        [transaction.domain_name]
+      );
+
+      if (pausedCampaigns.rows.length > 0) {
+        console.log(`✅ Paused ${pausedCampaigns.rows.length} campaign(s) for ${transaction.domain_name}`);
+        pausedCampaigns.rows.forEach(campaign => {
+          console.log(`   - ${campaign.campaign_name} (${campaign.campaign_id})`);
+        });
+      }
+
+      // Mark domain as sold (if you have a domains table)
+      // If not, you can use the campaign status as the source of truth
+      try {
+        await query(
+          `UPDATE campaigns 
+           SET 
+             sold = true,
+             sold_at = NOW(),
+             sold_price = $1,
+             sold_transaction_id = $2
+           WHERE domain_name = $3`,
+          [transaction.amount, transactionId, transaction.domain_name]
+        );
+        console.log(`✅ Domain ${transaction.domain_name} marked as SOLD`);
+      } catch (err) {
+        // Columns might not exist yet, that's okay
+        console.log(`⚠️ Could not mark as sold (columns may need to be added): ${err.message}`);
+      }
 
       console.log(`✅ Verification complete! Funds transferred to seller.`);
 

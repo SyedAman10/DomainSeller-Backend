@@ -534,6 +534,32 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // ✅ CHECK IF DOMAIN HAS BEEN SOLD
+    const soldCheck = await query(
+      `SELECT sold, sold_at, sold_price, sold_transaction_id 
+       FROM campaigns 
+       WHERE domain_name = $1 AND sold = true 
+       LIMIT 1`,
+      [domainName]
+    );
+
+    if (soldCheck.rows.length > 0) {
+      const soldInfo = soldCheck.rows[0];
+      console.log(`❌ Domain ${domainName} has been SOLD - cannot create campaign`);
+      
+      return res.status(403).json({
+        success: false,
+        error: 'Domain already sold',
+        message: `${domainName} was sold and cannot have new campaigns`,
+        soldInfo: {
+          soldAt: soldInfo.sold_at,
+          soldPrice: soldInfo.sold_price ? `$${soldInfo.sold_price}` : 'Not disclosed',
+          transactionId: soldInfo.sold_transaction_id
+        },
+        hint: 'This domain has been successfully sold via the escrow system'
+      });
+    }
+
     // Validate user exists
     const userCheck = await query(
       'SELECT id FROM users WHERE id = $1',
