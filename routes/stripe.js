@@ -349,7 +349,7 @@ router.post('/webhook', async (req, res) => {
 
   let event;
 
-  try { 
+  try {
     // Verify webhook signature
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     console.log('✅ Webhook signature verified successfully!');
@@ -584,32 +584,32 @@ router.post('/webhook', async (req, res) => {
           // OLD DIRECT PAYMENT FLOW (for backwards compatibility)
           // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           console.log('📋 Processing DIRECT payment (legacy)...');
+        
+        // Try to update by payment_intent first, then by payment_link
+        let updatedPayment = null;
+        
+        if (session.payment_intent) {
+          updatedPayment = await updatePaymentStatus(session.payment_intent, 'completed');
+        }
+        
+        // If not found by payment_intent, try by payment_link
+        if (!updatedPayment && session.payment_link) {
+          console.log(`🔍 Trying to find payment by payment_link: ${session.payment_link}`);
+          const paymentByLink = await query(
+            `UPDATE stripe_payments 
+             SET status = 'completed', 
+                 payment_intent_id = $1,
+                 updated_at = NOW()
+             WHERE payment_link_id = $2
+             RETURNING *`,
+            [session.payment_intent, session.payment_link]
+          );
           
-          // Try to update by payment_intent first, then by payment_link
-          let updatedPayment = null;
-          
-          if (session.payment_intent) {
-            updatedPayment = await updatePaymentStatus(session.payment_intent, 'completed');
+          if (paymentByLink.rows.length > 0) {
+            updatedPayment = paymentByLink.rows[0];
+            console.log(`✅ Found and updated payment by payment_link`);
           }
-          
-          // If not found by payment_intent, try by payment_link
-          if (!updatedPayment && session.payment_link) {
-            console.log(`🔍 Trying to find payment by payment_link: ${session.payment_link}`);
-            const paymentByLink = await query(
-              `UPDATE stripe_payments 
-               SET status = 'completed', 
-                   payment_intent_id = $1,
-                   updated_at = NOW()
-               WHERE payment_link_id = $2
-               RETURNING *`,
-              [session.payment_intent, session.payment_link]
-            );
-            
-            if (paymentByLink.rows.length > 0) {
-              updatedPayment = paymentByLink.rows[0];
-              console.log(`✅ Found and updated payment by payment_link`);
-            }
-          }
+        }
         
         if (updatedPayment) {
           

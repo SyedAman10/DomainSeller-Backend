@@ -13,23 +13,23 @@ const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
  * @returns {Object} Payment link details
  */
 const createEscrowPayment = async ({
-  domainName,
+    domainName,
   amount,
   currency = 'USD',
-  buyerEmail,
-  buyerName,
-  campaignId,
-  userId,
+    buyerEmail,
+    buyerName,
+    campaignId,
+    userId,
   sellerStripeAccountId
 }) => {
   try {
     console.log('💰 Creating ESCROW payment (platform account)...');
-    console.log(`   Domain: ${domainName}`);
+  console.log(`   Domain: ${domainName}`);
     console.log(`   Amount: ${amount} ${currency}`);
     console.log(`   Buyer: ${buyerName} (${buyerEmail})`);
     
     const amountInCents = Math.round(amount * 100);
-
+    
     // Calculate platform fee (10%)
     const platformFeePercent = 0.10;
     const platformFeeAmount = amount * platformFeePercent;
@@ -63,7 +63,7 @@ const createEscrowPayment = async ({
     });
 
     console.log(`✅ Price created: ${price.id}`);
-
+      
     // Create payment link (money goes to YOUR account)
     const paymentLink = await stripe.paymentLinks.create({
       line_items: [{
@@ -80,7 +80,7 @@ const createEscrowPayment = async ({
         platformFee: platformFeeAmount.toFixed(2),
         sellerPayout: sellerPayoutAmount.toFixed(2),
         escrow: 'true'
-      },
+          },
       after_completion: {
         type: 'hosted_confirmation',
         hosted_confirmation: {
@@ -118,7 +118,7 @@ const createEscrowPayment = async ({
           updated_at
         )
        VALUES ($1, $2, $3, $4, $5, $6, 'pending', 'pending_payment', $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
-       RETURNING id`,
+         RETURNING id`,
       [
         campaignIdInt,
         buyerEmail,
@@ -137,7 +137,7 @@ const createEscrowPayment = async ({
     );
 
     const transactionId = transactionResult.rows[0].id;
-
+      
     // Log in verification history
     await query(
       `INSERT INTO verification_history 
@@ -148,13 +148,13 @@ const createEscrowPayment = async ({
 
     console.log(`✅ Transaction created with ID: ${transactionId}`);
 
-    return {
-      success: true,
+  return {
+    success: true,
       transactionId: transactionId,
       paymentLinkId: paymentLink.id,
       paymentUrl: paymentLink.url,
-      amount,
-      currency,
+    amount,
+    currency,
       platformFee: platformFeeAmount,
       sellerPayout: sellerPayoutAmount,
       message: 'Escrow payment link created successfully'
@@ -336,7 +336,7 @@ const verifyAndTransfer = async (transactionId, adminUserId, verified, notes = '
           `Domain ${transaction.domain_name}: Verification complete. $${transaction.seller_payout_amount} transferred to seller.`,
           transactionId
         ]
-      );
+    );
 
       console.log(`✅ Verification complete! Funds transferred to seller.`);
 
@@ -422,13 +422,13 @@ const verifyAndTransfer = async (transactionId, adminUserId, verified, notes = '
 
       console.log(`✅ Refund issued to buyer.`);
 
-      return {
-        success: true,
+    return {
+      success: true,
         action: 'refunded',
         refundId: refund.id,
         amount: transaction.amount,
         message: 'Domain transfer failed and buyer refunded'
-      };
+    };
     }
   } catch (error) {
     console.error('❌ Error in verify and transfer:', error);
