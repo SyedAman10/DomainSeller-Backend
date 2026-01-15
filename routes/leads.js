@@ -9,6 +9,7 @@ const router = express.Router();
 const { query } = require('../config/database');
 const { scrapeGoogleSERP, crawlURLForContacts, getScrapingSessionStatus, getRecentSessions } = require('../services/apifyService');
 const { classifyLeadsBatch, getClassificationStats, shouldCrawlLead, filterLowQualityLeads } = require('../services/leadClassificationService');
+const { generateLeads, searchCachedLeads, getLeadStats, LEAD_ACTORS } = require('../services/smartLeadService');
 
 /**
  * POST /api/leads/collect
@@ -705,6 +706,260 @@ router.post('/:id/crawl', async (req, res) => {
       message: error.message
     });
   }
+});
+
+/**
+ * POST /api/leads/generate
+ * Smart Lead Generation with Caching
+ * 
+ * This endpoint uses AI-powered caching:
+ * 1. First checks database for existing leads matching the keyword
+ * 2. Returns cached leads if enough are found
+ * 3. Only scrapes if no cached leads exist or not enough
+ * 4. Prevents duplicate lead storage
+ * 
+ * Request Body:
+ * {
+ *   "keyword": "tech companies in NYC",
+ *   "count": 5,
+ *   "location": "New York",      // optional
+ *   "industry": "Technology",     // optional
+ *   "actor": "code_crafter/leads-finder",  // optional
+ *   "forceRefresh": false         // optional - force new scraping
+ * }
+ */
+router.post('/generate', async (req, res) => {
+  console.log('\n🚀 Smart Lead Generation Request');
+  console.log('============================================');
+  
+  try {
+    const {
+      keyword,
+      count = 5,
+      location,
+      industry,
+      actor,
+      forceRefresh = false
+    } = req.body;
+
+    // Validation
+    if (!keyword || keyword.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'keyword is required',
+        example: {
+          keyword: 'tech companies in NYC',
+          count: 5,
+          location: 'New York',
+          industry: 'Technology'
+        }
+      });
+    }
+
+    if (count < 1 || count > 100) {
+      return res.status(400).json({
+        success: false,
+        error: 'count must be between 1 and 100'
+      });
+    }
+
+    console.log(`📋 Keyword: "${keyword}"`);
+    console.log(`🔢 Count: ${count}`);
+    console.log(`📍 Location: ${location || 'Any'}`);
+    console.log(`🏢 Industry: ${industry || 'Any'}`);
+    console.log(`🔄 Force Refresh: ${forceRefresh}`);
+
+    // Generate leads with smart caching
+    const result = await generateLeads({
+      keyword,
+      count,
+      location,
+      industry,
+      actor,
+      forceRefresh
+    });
+
+    console.log('\n✅ Lead Generation Complete');
+    console.log(`   Source: ${result.source}`);
+    console.log(`   Total Found: ${result.totalFound}`);
+    console.log(`   From Cache: ${result.fromCache || 0}`);
+    console.log(`   From Scraping: ${result.fromScraping || 0}`);
+    console.log(`   Returned: ${result.leads.length}`);
+    console.log('============================================\n');
+
+    res.json({
+      success: true,
+      data: {
+        leads: result.leads,
+        metadata: {
+          keyword,
+          requested: count,
+          returned: result.leads.length,
+          totalFound: result.totalFound,
+          source: result.source,
+          fromCache: result.fromCache || 0,
+          fromScraping: result.fromScraping || 0,
+          scrapingUsed: result.scrapingUsed,
+          cacheEfficiency: result.totalFound > 0 
+            ? `${Math.round((result.fromCache || 0) / result.totalFound * 100)}%` 
+            : '0%'
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error in smart lead generation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate leads',
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * GET /api/leads/search
+ * Search existing cached leads without scraping
+ * 
+ * Query Parameters:
+ * - keyword: Search keyword (required)
+ * - location: Location filter (optional)
+ * - industry: Industry filter (optional)
+ * - limit: Max results (default: 10, max: 100)
+ */
+router.get('/search', async (req, res) => {
+  console.log('\n🔍 Searching Cached Leads');
+  
+  try {
+    const {
+      keyword,
+      location,
+      industry,
+      limit = 10
+    } = req.query;
+
+    if (!keyword) {
+      return res.status(400).json({
+        success: false,
+        error: 'keyword query parameter is required'
+      });
+    }
+
+    const limitNum = Math.min(parseInt(limit) || 10, 100);
+
+    console.log(`   Keyword: "${keyword}"`);
+    console.log(`   Location: ${location || 'Any'}`);
+    console.log(`   Industry: ${industry || 'Any'}`);
+    console.log(`   Limit: ${limitNum}`);
+
+    const leads = await searchCachedLeads({
+      keyword,
+      location,
+      industry,
+      limit: limitNum
+    });
+
+    console.log(`✅ Found ${leads.length} cached leads`);
+
+    res.json({
+      success: true,
+      data: {
+        leads,
+        count: leads.length,
+        keyword,
+        filters: {
+          location: location || null,
+          industry: industry || null
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error searching leads:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to search leads',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/leads/stats
+ * Get lead generation statistics
+ * 
+ * Query Parameters:
+ * - keyword: Filter by keyword (optional)
+ */
+router.get('/stats', async (req, res) => {
+  console.log('\n📊 Fetching Lead Statistics');
+  
+  try {
+    const { keyword } = req.query;
+
+    const stats = await getLeadStats(keyword);
+
+    console.log(`✅ Retrieved statistics`);
+    console.log(`   Total Leads: ${stats.total_leads}`);
+    console.log(`   With Email: ${stats.leads_with_email}`);
+    console.log(`   With Phone: ${stats.leads_with_phone}`);
+
+    res.json({
+      success: true,
+      data: {
+        totalLeads: parseInt(stats.total_leads),
+        uniqueQueries: parseInt(stats.unique_queries),
+        actorsUsed: parseInt(stats.actors_used),
+        leadsWithEmail: parseInt(stats.leads_with_email),
+        leadsWithPhone: parseInt(stats.leads_with_phone),
+        intentDistribution: {
+          hot: parseInt(stats.hot_leads),
+          warm: parseInt(stats.warm_leads),
+          cold: parseInt(stats.cold_leads)
+        },
+        averageConfidence: parseInt(stats.avg_confidence),
+        dateRange: {
+          first: stats.first_lead_date,
+          latest: stats.latest_lead_date
+        },
+        emailCoverage: stats.total_leads > 0 
+          ? `${Math.round(stats.leads_with_email / stats.total_leads * 100)}%` 
+          : '0%',
+        phoneCoverage: stats.total_leads > 0 
+          ? `${Math.round(stats.leads_with_phone / stats.total_leads * 100)}%` 
+          : '0%'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch statistics',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/leads/actors
+ * Get list of available Apify actors for lead generation
+ */
+router.get('/actors', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      actors: LEAD_ACTORS,
+      default: LEAD_ACTORS.LEADS_FINDER,
+      description: {
+        [LEAD_ACTORS.LEADS_FINDER]: 'Generic leads finder with email/phone extraction',
+        [LEAD_ACTORS.GOOGLE_MAPS]: 'Scrapes business data from Google Maps',
+        [LEAD_ACTORS.LINKEDIN]: 'Extracts professional profiles from LinkedIn',
+        [LEAD_ACTORS.YELLOWPAGES]: 'Scrapes business listings from Yellow Pages'
+      }
+    }
+  });
 });
 
 module.exports = router;
