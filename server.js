@@ -31,9 +31,13 @@ const PORT = process.env.PORT || 5000;
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
+  'http://localhost:5000',
   'https://3vltn.com',
   'http://3vltn.com',
+  'https://www.3vltn.com',
+  'http://www.3vltn.com',
   'https://api.3vltn.com',
+  'http://api.3vltn.com',
   'https://3-vltn-dashboard.vercel.app'
 ];
 
@@ -41,15 +45,22 @@ console.log('🌐 CORS Allowed Origins:', allowedOrigins);
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl)
-    if (!origin) return callback(null, true);
+    console.log(`🔍 CORS Check - Origin: ${origin || 'NO ORIGIN'}`);
+    
+    // Allow requests with no origin (like mobile apps, curl, Postman, or same-origin)
+    if (!origin) {
+      console.log('   ✅ Allowed: No origin (same-origin or non-browser)');
+      return callback(null, true);
+    }
 
     if (allowedOrigins.includes(origin)) {
+      console.log(`   ✅ Allowed: ${origin} is in whitelist`);
       callback(null, true);
     } else {
-      console.warn(`⚠️  CORS blocked origin: ${origin}`);
-      console.warn(`   Allowed: ${allowedOrigins.join(', ')}`);
-      callback(new Error('Not allowed by CORS'));
+      console.warn(`   ❌ BLOCKED: ${origin} not in whitelist`);
+      console.warn(`   Allowed origins: ${allowedOrigins.join(', ')}`);
+      // Don't throw error, just deny
+      callback(null, false);
     }
   },
   credentials: true,
