@@ -49,17 +49,22 @@ async function generateLeads(options) {
     forceRefresh = false
   } = options;
 
-  console.log('\n🎯 Smart Lead Generation Request');
-  console.log(`   Keyword: "${keyword}"`);
-  console.log(`   Count: ${count}`);
-  console.log(`   Location: ${location || 'Any'}`);
-  console.log(`   Industry: ${industry || 'Any'}`);
-  console.log(`   Force Refresh: ${forceRefresh}`);
+  console.log('\n🎯 SMART LEAD GENERATION REQUEST');
+  console.log('━'.repeat(80));
+  console.log('📋 REQUEST PARAMETERS:');
+  console.log('┌─────────────────────────────────────────────────────────────────┐');
+  console.log(`│ Keyword: "${keyword}"`);
+  console.log(`│ Count: ${count}`);
+  console.log(`│ Location: ${location || 'Any'}`);
+  console.log(`│ Industry: ${industry || 'Any'}`);
+  console.log(`│ Actor: ${actor}`);
+  console.log(`│ Force Refresh: ${forceRefresh}`);
+  console.log('└─────────────────────────────────────────────────────────────────┘');
 
   try {
     // Step 1: Check database for existing leads matching this keyword
     if (!forceRefresh) {
-      console.log('\n🔍 Checking database for existing leads...');
+      console.log('\n🔍 STEP 1: Checking database for existing leads...');
       
       const cachedLeads = await searchCachedLeads({
         keyword,
@@ -69,8 +74,13 @@ async function generateLeads(options) {
       });
 
       if (cachedLeads.length >= count) {
-        console.log(`✅ Found ${cachedLeads.length} cached leads matching criteria`);
-        console.log('   Returning from cache (no scraping needed)');
+        console.log('\n✅ CACHE HIT - Sufficient leads found!');
+        console.log('┌─────────────────────────────────────────────────────────────────┐');
+        console.log(`│ Found: ${cachedLeads.length} cached leads (need: ${count})`);
+        console.log('│ Result: Returning from cache (NO SCRAPING NEEDED) 🎉');
+        console.log('│ Cost: $0.00');
+        console.log('└─────────────────────────────────────────────────────────────────┘');
+        console.log('━'.repeat(80) + '\n');
         
         return {
           success: true,
@@ -78,15 +88,21 @@ async function generateLeads(options) {
           leads: cachedLeads.slice(0, count),
           totalFound: cachedLeads.length,
           requested: count,
-          fromCache: true,
+          fromCache: cachedLeads.length,
           scrapingUsed: false
         };
       } else if (cachedLeads.length > 0) {
-        console.log(`⚠️ Found only ${cachedLeads.length} cached leads (need ${count})`);
-        console.log(`   Will scrape ${count - cachedLeads.length} more leads`);
+        console.log('\n⚠️  PARTIAL CACHE HIT');
+        console.log('┌─────────────────────────────────────────────────────────────────┐');
+        console.log(`│ Found: ${cachedLeads.length} cached leads (need: ${count})`);
+        console.log(`│ Missing: ${count - cachedLeads.length} leads`);
+        console.log('│ Result: Will scrape remaining leads');
+        console.log('└─────────────────────────────────────────────────────────────────┘');
         
         // Return partial cached results and scrape the rest
         const remainingCount = count - cachedLeads.length;
+        console.log(`\n🕷️  STEP 2: Scraping ${remainingCount} additional leads...`);
+        
         const scrapedLeads = await scrapeLeads({
           keyword,
           location,
@@ -98,6 +114,14 @@ async function generateLeads(options) {
         // Combine cached + scraped
         const allLeads = [...cachedLeads, ...scrapedLeads];
         
+        console.log('\n✅ HYBRID RESULT:');
+        console.log('┌─────────────────────────────────────────────────────────────────┐');
+        console.log(`│ From Cache: ${cachedLeads.length} leads`);
+        console.log(`│ From Scraping: ${scrapedLeads.length} leads`);
+        console.log(`│ Total: ${allLeads.length} leads`);
+        console.log('└─────────────────────────────────────────────────────────────────┘');
+        console.log('━'.repeat(80) + '\n');
+        
         return {
           success: true,
           source: 'hybrid',
@@ -108,11 +132,19 @@ async function generateLeads(options) {
           fromScraping: scrapedLeads.length,
           scrapingUsed: true
         };
+      } else {
+        console.log('\n❌ CACHE MISS - No cached leads found');
+        console.log('┌─────────────────────────────────────────────────────────────────┐');
+        console.log('│ Found: 0 cached leads');
+        console.log('│ Result: Will scrape all leads from Apify');
+        console.log('└─────────────────────────────────────────────────────────────────┘');
       }
+    } else {
+      console.log('\n🔄 FORCE REFRESH - Skipping cache check');
     }
 
     // Step 2: No cached leads found or force refresh - scrape new leads
-    console.log('\n🕷️ No cached leads found. Starting fresh scraping...');
+    console.log('\n🕷️  STEP 2: Starting fresh scraping...');
     
     const scrapedLeads = await scrapeLeads({
       keyword,
@@ -121,6 +153,13 @@ async function generateLeads(options) {
       count,
       actor
     });
+
+    console.log('\n✅ SCRAPING RESULT:');
+    console.log('┌─────────────────────────────────────────────────────────────────┐');
+    console.log(`│ Scraped: ${scrapedLeads.length} new leads`);
+    console.log(`│ Source: Fresh from Apify actor`);
+    console.log('└─────────────────────────────────────────────────────────────────┘');
+    console.log('━'.repeat(80) + '\n');
 
     return {
       success: true,
@@ -134,7 +173,11 @@ async function generateLeads(options) {
     };
 
   } catch (error) {
-    console.error('❌ Error in smart lead generation:', error);
+    console.error('\n❌ ERROR IN SMART LEAD GENERATION:');
+    console.error('┌─────────────────────────────────────────────────────────────────┐');
+    console.error(`│ Error: ${error.message}`);
+    console.error('└─────────────────────────────────────────────────────────────────┘');
+    console.error('━'.repeat(80) + '\n');
     throw error;
   }
 }
@@ -243,6 +286,7 @@ async function scrapeLeads(options) {
   } = options;
 
   console.log(`\n🚀 Starting Apify actor: ${actor}`);
+  console.log('━'.repeat(80));
 
   try {
     // Prepare actor input based on which actor is being used
@@ -253,27 +297,48 @@ async function scrapeLeads(options) {
       count
     });
 
-    console.log('📤 Actor Input:', JSON.stringify(input, null, 2));
+    console.log('\n📤 SENDING TO APIFY ACTOR:');
+    console.log('┌─────────────────────────────────────────────────────────────────┐');
+    console.log('│ Actor:', actor);
+    console.log('│ Input:', JSON.stringify(input, null, 2).split('\n').join('\n│       '));
+    console.log('└─────────────────────────────────────────────────────────────────┘');
 
     // Run the actor
+    console.log('\n⏳ Running Apify actor... (this may take 30-60 seconds)');
     const run = await apifyClient.actor(actor).call(input, {
       timeout: DEFAULT_TIMEOUT,
       memory: 2048, // 2GB
     });
 
-    console.log(`✅ Actor run completed: ${run.id}`);
-    console.log(`   Status: ${run.status}`);
-    console.log(`   Compute units: ${run.usedComputeUnits || 0}`);
+    console.log('\n✅ APIFY ACTOR COMPLETED:');
+    console.log('┌─────────────────────────────────────────────────────────────────┐');
+    console.log(`│ Run ID: ${run.id}`);
+    console.log(`│ Status: ${run.status}`);
+    console.log(`│ Compute Units: ${run.usedComputeUnits || 0}`);
+    console.log(`│ Started: ${run.startedAt}`);
+    console.log(`│ Finished: ${run.finishedAt}`);
+    console.log('└─────────────────────────────────────────────────────────────────┘');
 
     if (run.status !== 'SUCCEEDED') {
       throw new Error(`Actor run failed with status: ${run.status}`);
     }
 
     // Fetch dataset results
-    console.log('📥 Fetching scraped results...');
+    console.log('\n📥 Fetching scraped results from Apify dataset...');
     const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
 
-    console.log(`✅ Retrieved ${items.length} raw results`);
+    console.log(`\n✅ RECEIVED ${items.length} RAW RESULTS FROM APIFY`);
+    console.log('━'.repeat(80));
+    
+    // Log first result as sample
+    if (items.length > 0) {
+      console.log('\n📄 SAMPLE RAW RESULT (First Lead):');
+      console.log('┌─────────────────────────────────────────────────────────────────┐');
+      console.log(JSON.stringify(items[0], null, 2).split('\n').map(line => `│ ${line}`).join('\n'));
+      console.log('└─────────────────────────────────────────────────────────────────┘');
+    }
+    
+    console.log('\n🔄 Transforming and storing leads...');
 
     // Transform and store leads
     const transformedLeads = await transformAndStoreLeads(items, {
@@ -284,7 +349,12 @@ async function scrapeLeads(options) {
       runId: run.id
     });
 
-    console.log(`✅ Stored ${transformedLeads.length} unique leads`);
+    console.log('\n✅ STORAGE COMPLETE:');
+    console.log('┌─────────────────────────────────────────────────────────────────┐');
+    console.log(`│ Stored: ${transformedLeads.length} unique leads`);
+    console.log(`│ Duplicates Skipped: ${items.length - transformedLeads.length}`);
+    console.log('└─────────────────────────────────────────────────────────────────┘');
+    console.log('━'.repeat(80) + '\n');
 
     return transformedLeads;
 
@@ -360,17 +430,25 @@ function prepareActorInput(actor, options) {
 async function transformAndStoreLeads(items, metadata) {
   const { keyword, location, industry, actor, runId } = metadata;
   const storedLeads = [];
+  let duplicateCount = 0;
 
-  for (const item of items) {
+  console.log('\n🔄 TRANSFORMING LEADS:');
+  console.log(`   Processing ${items.length} raw items...`);
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    
     try {
       // Transform item to standard format
       const lead = transformLeadData(item, actor);
 
       // Skip if no essential data
       if (!lead.company_name && !lead.email && !lead.website) {
-        console.log('⚠️ Skipping lead with insufficient data');
+        console.log(`   ⚠️  [${i + 1}/${items.length}] Skipped: Insufficient data`);
         continue;
       }
+
+      console.log(`   📝 [${i + 1}/${items.length}] Storing: ${lead.company_name || lead.email || lead.website}`);
 
       // Insert into database with duplicate prevention
       const result = await query(`
@@ -437,16 +515,23 @@ async function transformAndStoreLeads(items, metadata) {
       ]);
 
       storedLeads.push(result.rows[0]);
+      console.log(`      ✅ Stored successfully (ID: ${result.rows[0].id})`);
 
     } catch (error) {
       // If it's a duplicate key error, that's OK - we just skip it
       if (error.code === '23505') {
-        console.log('   ℹ️ Duplicate lead skipped');
+        duplicateCount++;
+        console.log(`      ℹ️  Duplicate - already exists in database`);
       } else {
-        console.error('❌ Error storing lead:', error.message);
+        console.error(`      ❌ Error storing lead: ${error.message}`);
       }
     }
   }
+
+  console.log('\n📊 STORAGE SUMMARY:');
+  console.log(`   ✅ Successfully stored: ${storedLeads.length}`);
+  console.log(`   ℹ️  Duplicates skipped: ${duplicateCount}`);
+  console.log(`   ⚠️  Insufficient data: ${items.length - storedLeads.length - duplicateCount}`);
 
   return storedLeads;
 }

@@ -729,8 +729,14 @@ router.post('/:id/crawl', async (req, res) => {
  * }
  */
 router.post('/generate', async (req, res) => {
-  console.log('\n🚀 Smart Lead Generation Request');
-  console.log('============================================');
+  const startTime = Date.now();
+  
+  console.log('\n' + '═'.repeat(80));
+  console.log('🚀 NEW API REQUEST: POST /backend/leads/generate');
+  console.log('═'.repeat(80));
+  console.log('📥 REQUEST BODY:');
+  console.log(JSON.stringify(req.body, null, 2));
+  console.log('━'.repeat(80));
   
   try {
     const {
@@ -744,6 +750,9 @@ router.post('/generate', async (req, res) => {
 
     // Validation
     if (!keyword || keyword.trim().length === 0) {
+      console.log('❌ Validation failed: Missing keyword');
+      console.log('═'.repeat(80) + '\n');
+      
       return res.status(400).json({
         success: false,
         error: 'keyword is required',
@@ -757,17 +766,14 @@ router.post('/generate', async (req, res) => {
     }
 
     if (count < 1 || count > 100) {
+      console.log('❌ Validation failed: Invalid count');
+      console.log('═'.repeat(80) + '\n');
+      
       return res.status(400).json({
         success: false,
         error: 'count must be between 1 and 100'
       });
     }
-
-    console.log(`📋 Keyword: "${keyword}"`);
-    console.log(`🔢 Count: ${count}`);
-    console.log(`📍 Location: ${location || 'Any'}`);
-    console.log(`🏢 Industry: ${industry || 'Any'}`);
-    console.log(`🔄 Force Refresh: ${forceRefresh}`);
 
     // Generate leads with smart caching
     const result = await generateLeads({
@@ -779,13 +785,19 @@ router.post('/generate', async (req, res) => {
       forceRefresh
     });
 
-    console.log('\n✅ Lead Generation Complete');
-    console.log(`   Source: ${result.source}`);
-    console.log(`   Total Found: ${result.totalFound}`);
-    console.log(`   From Cache: ${result.fromCache || 0}`);
-    console.log(`   From Scraping: ${result.fromScraping || 0}`);
-    console.log(`   Returned: ${result.leads.length}`);
-    console.log('============================================\n');
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+
+    console.log('\n📤 API RESPONSE:');
+    console.log('┌─────────────────────────────────────────────────────────────────┐');
+    console.log(`│ Success: true`);
+    console.log(`│ Source: ${result.source}`);
+    console.log(`│ Total Found: ${result.totalFound}`);
+    console.log(`│ From Cache: ${result.fromCache || 0}`);
+    console.log(`│ From Scraping: ${result.fromScraping || 0}`);
+    console.log(`│ Returned: ${result.leads.length} leads`);
+    console.log(`│ Duration: ${duration}s`);
+    console.log('└─────────────────────────────────────────────────────────────────┘');
+    console.log('═'.repeat(80) + '\n');
 
     res.json({
       success: true,
@@ -802,13 +814,23 @@ router.post('/generate', async (req, res) => {
           scrapingUsed: result.scrapingUsed,
           cacheEfficiency: result.totalFound > 0 
             ? `${Math.round((result.fromCache || 0) / result.totalFound * 100)}%` 
-            : '0%'
+            : '0%',
+          duration: `${duration}s`
         }
       }
     });
 
   } catch (error) {
-    console.error('❌ Error in smart lead generation:', error);
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    
+    console.error('\n❌ API ERROR:');
+    console.error('┌─────────────────────────────────────────────────────────────────┐');
+    console.error(`│ Error: ${error.message}`);
+    console.error(`│ Duration: ${duration}s`);
+    console.error('└─────────────────────────────────────────────────────────────────┘');
+    console.error('Stack:', error.stack);
+    console.log('═'.repeat(80) + '\n');
+    
     res.status(500).json({
       success: false,
       error: 'Failed to generate leads',
