@@ -22,6 +22,7 @@ const chatbotRoutes = require('./routes/chatbot');
 const adminRoutes = require('./routes/admin');
 const buyerRoutes = require('./routes/buyer');
 const salesRoutes = require('./routes/sales');
+const aiAgentRoutes = require('./routes/aiAgent');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -171,6 +172,7 @@ app.use('/backend/chatbot', chatbotRoutes);
 app.use('/backend/admin', adminRoutes);
 app.use('/backend/buyer', buyerRoutes);
 app.use('/backend/sales', salesRoutes);
+app.use('/backend/ai-agent', aiAgentRoutes);
 
 // Buyer routes without prefix (for email links)
 app.use('/buyer', buyerRoutes);
