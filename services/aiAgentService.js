@@ -633,10 +633,19 @@ class AIAgentService {
       // Build messages for OpenAI
       const messages = [
         { role: 'system', content: SYSTEM_PROMPT },
-        ...history.map(msg => ({
-          role: msg.role,
-          content: msg.content || (msg.function_response ? JSON.stringify(msg.function_response) : '')
-        })),
+        ...history.map(msg => {
+          const message = {
+            role: msg.role,
+            content: msg.content || (msg.function_response ? JSON.stringify(msg.function_response) : '')
+          };
+          
+          // For function messages, include the function name (required by OpenAI)
+          if (msg.role === 'function' && msg.function_name) {
+            message.name = msg.function_name;
+          }
+          
+          return message;
+        }),
         { role: 'user', content: userMessage }
       ];
 
