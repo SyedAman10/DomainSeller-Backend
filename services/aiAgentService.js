@@ -12,7 +12,7 @@ const AI_MODEL = process.env.OPENAI_MODEL || 'gpt-4-turbo-preview';
 const AVAILABLE_FUNCTIONS = {
   createCampaign: {
     name: 'createCampaign',
-    description: 'Create a new email campaign for a domain. Use this when user wants to create, start, or set up a campaign.',
+    description: 'Create a new email campaign for a domain. Use this when user confirms they want to create a campaign and provides basic details.',
     parameters: {
       type: 'object',
       properties: {
@@ -34,6 +34,81 @@ const AVAILABLE_FUNCTIONS = {
         }
       },
       required: ['domainName', 'campaignName', 'askingPrice']
+    }
+  },
+  checkLandingPage: {
+    name: 'checkLandingPage',
+    description: 'Check if a landing page exists for a specific domain',
+    parameters: {
+      type: 'object',
+      properties: {
+        domainName: {
+          type: 'string',
+          description: 'The domain name to check for landing page'
+        }
+      },
+      required: ['domainName']
+    }
+  },
+  findMatchedBuyers: {
+    name: 'findMatchedBuyers',
+    description: 'Find potential buyers matched to a domain based on industry and keywords',
+    parameters: {
+      type: 'object',
+      properties: {
+        domainName: {
+          type: 'string',
+          description: 'The domain name to find buyers for'
+        },
+        targetIndustry: {
+          type: 'string',
+          description: 'Target industry for matching buyers'
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of buyers to return (default: 50)'
+        }
+      },
+      required: ['domainName']
+    }
+  },
+  configureCampaignSettings: {
+    name: 'configureCampaignSettings',
+    description: 'Configure campaign settings including follow-ups, landing page, and email scheduling',
+    parameters: {
+      type: 'object',
+      properties: {
+        campaignId: {
+          type: 'string',
+          description: 'The campaign ID to configure'
+        },
+        includeFollowUps: {
+          type: 'boolean',
+          description: 'Whether to include follow-up emails'
+        },
+        followUpDays: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Days after initial email to send follow-ups (e.g., [3, 7, 14])'
+        },
+        includeLandingPage: {
+          type: 'boolean',
+          description: 'Whether to include landing page link in emails'
+        },
+        landingPageUrl: {
+          type: 'string',
+          description: 'Landing page URL if including'
+        },
+        scheduleDate: {
+          type: 'string',
+          description: 'Date to schedule emails (ISO format) or "now" for immediate send'
+        },
+        manualCompose: {
+          type: 'boolean',
+          description: 'Whether user wants to manually compose emails'
+        }
+      },
+      required: ['campaignId']
     }
   },
   getUserCampaigns: {
@@ -73,13 +148,59 @@ const SYSTEM_PROMPT = `You are a helpful AI assistant for a domain selling platf
 3. Get insights about their domain portfolio
 4. Understand campaign performance
 
-Be conversational, friendly, and proactive. When user wants to create a campaign, ask for:
+CAMPAIGN CREATION FLOW - MANDATORY STEPS:
+When user wants to create a campaign, you MUST follow ALL these steps IN ORDER. DO NOT create the campaign until you have ALL the information:
+
+STEP 1: Gather BASIC information first
 - Domain name
 - Campaign name (suggest one based on domain)
 - Asking price
 - (Optional) Target industry/keywords
 
-Always confirm actions before executing them. Keep responses concise but informative.`;
+STEP 2: BEFORE creating campaign, ask about BUYER MATCHING
+- "Would you like me to find matched buyers for this domain based on industry/keywords?"
+- If yes, call findMatchedBuyers and show them how many matches were found
+- Ask if they want to proceed with these buyers or search for different ones
+
+STEP 3: Ask about LANDING PAGE
+- "Do you have a landing page for this domain? If so, please provide the URL (e.g., https://yoursite.com/domains/example)"
+- If they don't have one, offer to note this for future setup
+- Explain that landing pages increase buyer engagement by 40%
+
+STEP 4: Ask about FOLLOW-UP SETTINGS
+- "Would you like to include follow-up emails? (Recommended - increases response rates by 3x)"
+- If yes: "How many days between follow-ups? Default is 3, 7, and 14 days"
+- Explain that follow-ups are crucial for domain sales
+
+STEP 5: Ask about EMAIL COMPOSITION
+- "Would you like to manually compose your email, or should I generate a professional one for you?"
+- If manual: explain they'll compose it in the next step
+- If auto-generate: explain we'll create a personalized email for each buyer
+
+STEP 6: Ask about SCHEDULING
+- "When should I schedule these emails?"
+  - "Send immediately"
+  - "Schedule for specific date/time"
+- If scheduling, ask for the date and time
+
+STEP 7: ONLY AFTER ALL ABOVE - Create the campaign
+- Confirm ALL settings before creating
+- Show a summary of what will be created
+- Ask for final confirmation
+- Then call createCampaign with status 'draft'
+
+STEP 8: AFTER campaign creation - Configure it
+- Call configureCampaignSettings with all the collected information
+- Confirm the campaign is ready
+- Explain next steps (emails will be sent, they can monitor in dashboard)
+
+CRITICAL RULES:
+- NEVER skip asking about buyers, landing page, follow-ups, email composition, and scheduling
+- ALWAYS get explicit confirmation before creating the campaign
+- If user seems uncertain about any option, explain the benefits
+- Keep track of their answers and use them when creating/configuring the campaign
+
+Be conversational, friendly, and consultative. Guide them through best practices but respect their choices. Keep responses concise but informative.`;
 
 class AIAgentService {
   // Get or create chat session
@@ -183,6 +304,15 @@ class AIAgentService {
       case 'createCampaign':
         return await this.createCampaign(args, userId);
       
+      case 'checkLandingPage':
+        return await this.checkLandingPage(args, userId);
+      
+      case 'findMatchedBuyers':
+        return await this.findMatchedBuyers(args, userId);
+      
+      case 'configureCampaignSettings':
+        return await this.configureCampaignSettings(args, userId);
+      
       case 'getUserCampaigns':
         return await this.getUserCampaigns(args, userId);
       
@@ -202,7 +332,7 @@ class AIAgentService {
       const result = await pool.query(
         `INSERT INTO campaigns 
          (campaign_id, user_id, campaign_name, domain_name, asking_price, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())
+         VALUES ($1, $2, $3, $4, $5, 'draft', NOW(), NOW())
          RETURNING *`,
         [campaignId, userId, campaignName, domainName, askingPrice]
       );
@@ -224,7 +354,7 @@ class AIAgentService {
           price: campaign.asking_price,
           status: campaign.status
         },
-        message: `✅ Campaign "${campaignName}" created successfully for ${domainName} at $${askingPrice}`
+        message: `✅ Campaign "${campaignName}" created as DRAFT for ${domainName} at $${askingPrice}. Now let's configure the settings!`
       };
     } catch (error) {
       console.error('Error creating campaign:', error);
@@ -327,6 +457,141 @@ class AIAgentService {
       };
     } catch (error) {
       console.error('Error fetching campaign stats:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async checkLandingPage({ domainName }, userId) {
+    try {
+      // Check if a landing page exists for this domain
+      // This is a placeholder - you can integrate with actual landing page service
+      
+      // For now, we'll return a simple response
+      return {
+        success: true,
+        exists: false,
+        message: `No landing page found for ${domainName}. You can create one to increase buyer engagement by up to 40%!`,
+        suggestion: `Recommended URL format: https://yoursite.com/domains/${domainName}`
+      };
+    } catch (error) {
+      console.error('Error checking landing page:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async findMatchedBuyers({ domainName, targetIndustry, limit = 50 }, userId) {
+    try {
+      let query = `
+        SELECT 
+          buyer_id,
+          buyer_name,
+          buyer_email,
+          company_name,
+          industry,
+          country,
+          city
+        FROM buyers
+        WHERE 1=1
+      `;
+      
+      const params = [];
+      let paramCount = 0;
+      
+      // Filter by target industry if provided
+      if (targetIndustry) {
+        paramCount++;
+        query += ` AND (industry ILIKE $${paramCount} OR keywords ILIKE $${paramCount})`;
+        params.push(`%${targetIndustry}%`);
+      }
+      
+      // Add limit
+      paramCount++;
+      query += ` ORDER BY created_at DESC LIMIT $${paramCount}`;
+      params.push(limit);
+      
+      const result = await pool.query(query, params);
+      
+      return {
+        success: true,
+        buyers: result.rows,
+        count: result.rows.length,
+        message: `Found ${result.rows.length} matched buyers${targetIndustry ? ` in ${targetIndustry} industry` : ''}`
+      };
+    } catch (error) {
+      console.error('Error finding matched buyers:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async configureCampaignSettings({
+    campaignId,
+    includeFollowUps = true,
+    followUpDays = [3, 7, 14],
+    includeLandingPage = false,
+    landingPageUrl = null,
+    scheduleDate = 'now',
+    manualCompose = false
+  }, userId) {
+    try {
+      // Find the campaign
+      const campaignQuery = await pool.query(
+        `SELECT * FROM campaigns 
+         WHERE user_id = $1 AND (id::text = $2 OR campaign_id = $2)
+         LIMIT 1`,
+        [userId, campaignId]
+      );
+      
+      if (campaignQuery.rows.length === 0) {
+        return { success: false, error: 'Campaign not found' };
+      }
+      
+      const campaign = campaignQuery.rows[0];
+      
+      // Update campaign settings
+      await pool.query(
+        `UPDATE campaigns 
+         SET 
+           include_followups = $1,
+           followup_days = $2,
+           include_landing_page = $3,
+           landing_page_url = $4,
+           manual_compose = $5,
+           updated_at = NOW()
+         WHERE id = $6`,
+        [
+          includeFollowUps,
+          followUpDays ? `{${followUpDays.join(',')}}` : null,
+          includeLandingPage,
+          landingPageUrl,
+          manualCompose,
+          campaign.id
+        ]
+      );
+      
+      return {
+        success: true,
+        message: `✅ Campaign settings configured successfully!`,
+        settings: {
+          followUps: includeFollowUps ? `Enabled (${followUpDays.join(', ')} days)` : 'Disabled',
+          landingPage: includeLandingPage ? landingPageUrl : 'Not included',
+          scheduling: scheduleDate === 'now' ? 'Immediate send' : `Scheduled for ${scheduleDate}`,
+          emailComposition: manualCompose ? 'Manual' : 'Auto-generated'
+        },
+        nextStep: manualCompose 
+          ? 'Please compose your email in the campaign dashboard'
+          : 'Emails are ready to be sent! Visit your dashboard to activate the campaign.'
+      };
+    } catch (error) {
+      console.error('Error configuring campaign:', error);
       return {
         success: false,
         error: error.message

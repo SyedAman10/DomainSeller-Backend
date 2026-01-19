@@ -51,3 +51,37 @@ COMMENT ON TABLE ai_chat_sessions IS 'AI agent chat sessions with users';
 COMMENT ON TABLE ai_chat_messages IS 'Individual messages in AI conversations';
 COMMENT ON TABLE ai_agent_memory IS 'Persistent memory for AI agent per user';
 
+-- Add campaign configuration columns (if they don't exist)
+DO $$ 
+BEGIN
+  -- Add include_followups column
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'campaigns' AND column_name = 'include_followups') THEN
+    ALTER TABLE campaigns ADD COLUMN include_followups BOOLEAN DEFAULT TRUE;
+  END IF;
+
+  -- Add followup_days column
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'campaigns' AND column_name = 'followup_days') THEN
+    ALTER TABLE campaigns ADD COLUMN followup_days INTEGER[] DEFAULT ARRAY[3, 7, 14];
+  END IF;
+
+  -- Add include_landing_page column
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'campaigns' AND column_name = 'include_landing_page') THEN
+    ALTER TABLE campaigns ADD COLUMN include_landing_page BOOLEAN DEFAULT FALSE;
+  END IF;
+
+  -- Add landing_page_url column
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'campaigns' AND column_name = 'landing_page_url') THEN
+    ALTER TABLE campaigns ADD COLUMN landing_page_url TEXT;
+  END IF;
+
+  -- Add manual_compose column
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'campaigns' AND column_name = 'manual_compose') THEN
+    ALTER TABLE campaigns ADD COLUMN manual_compose BOOLEAN DEFAULT FALSE;
+  END IF;
+END $$;
+

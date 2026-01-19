@@ -1,10 +1,11 @@
-const pool = require('../config/database');
+const pool = require('./config/database');
+const fs = require('fs');
 
 async function runMigration() {
   console.log('🚀 Starting AI Agent database migration...');
   
   try {
-    const migrationSQL = require('fs').readFileSync('./database/create_ai_agent.sql', 'utf8');
+    const migrationSQL = fs.readFileSync('./database/create_ai_agent.sql', 'utf8');
     
     console.log('📝 Executing SQL migration...');
     await pool.query(migrationSQL);
