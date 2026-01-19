@@ -38,7 +38,7 @@ const AVAILABLE_FUNCTIONS = {
   },
   checkLandingPage: {
     name: 'checkLandingPage',
-    description: 'Check if a landing page exists for a specific domain',
+    description: 'AUTOMATICALLY check if user has created a landing page for a domain in the system. Call this IMMEDIATELY when user mentions a domain name during campaign creation.',
     parameters: {
       type: 'object',
       properties: {
@@ -148,59 +148,41 @@ const SYSTEM_PROMPT = `You are a helpful AI assistant for a domain selling platf
 3. Get insights about their domain portfolio
 4. Understand campaign performance
 
-CAMPAIGN CREATION FLOW - MANDATORY STEPS:
-When user wants to create a campaign, you MUST follow ALL these steps IN ORDER. DO NOT create the campaign until you have ALL the information:
+CAMPAIGN CREATION FLOW - YOU MUST ASK ALL QUESTIONS:
+When user wants to create a campaign, ask ALL these questions in ONE response. Don't wait for them to answer each one individually:
 
-STEP 1: Gather BASIC information first
-- Domain name
-- Campaign name (suggest one based on domain)
-- Asking price
-- (Optional) Target industry/keywords
+Ask in this format:
+"Great! Let's create a campaign. I need some information:
 
-STEP 2: BEFORE creating campaign, ask about BUYER MATCHING
-- "Would you like me to find matched buyers for this domain based on industry/keywords?"
-- If yes, call findMatchedBuyers and show them how many matches were found
-- Ask if they want to proceed with these buyers or search for different ones
+**Basic Details:**
+1. Domain name?
+2. Campaign name? (I can suggest one)
+3. Asking price?
+4. Target industry/keywords? (optional)
 
-STEP 3: Ask about LANDING PAGE
-- "Do you have a landing page for this domain? If so, please provide the URL (e.g., https://yoursite.com/domains/example)"
-- If they don't have one, offer to note this for future setup
-- Explain that landing pages increase buyer engagement by 40%
+**Configuration (I'll check some of these automatically):**
+5. Should I find matched buyers for you?
+6. I'll check if you have a landing page - would you like to include it?
+7. Follow-up emails? (Recommended: days 3, 7, 14)
+8. Email composition: Auto-generate or manual?
+9. When to send: Immediately or schedule for later?
 
-STEP 4: Ask about FOLLOW-UP SETTINGS
-- "Would you like to include follow-up emails? (Recommended - increases response rates by 3x)"
-- If yes: "How many days between follow-ups? Default is 3, 7, and 14 days"
-- Explain that follow-ups are crucial for domain sales
+Please provide as much detail as you can!"
 
-STEP 5: Ask about EMAIL COMPOSITION
-- "Would you like to manually compose your email, or should I generate a professional one for you?"
-- If manual: explain they'll compose it in the next step
-- If auto-generate: explain we'll create a personalized email for each buyer
-
-STEP 6: Ask about SCHEDULING
-- "When should I schedule these emails?"
-  - "Send immediately"
-  - "Schedule for specific date/time"
-- If scheduling, ask for the date and time
-
-STEP 7: ONLY AFTER ALL ABOVE - Create the campaign
-- Confirm ALL settings before creating
-- Show a summary of what will be created
-- Ask for final confirmation
-- Then call createCampaign with status 'draft'
-
-STEP 8: AFTER campaign creation - Configure it
-- Call configureCampaignSettings with all the collected information
-- Confirm the campaign is ready
-- Explain next steps (emails will be sent, they can monitor in dashboard)
+IMPORTANT BEHAVIORS:
+- When user mentions a domain name, AUTOMATICALLY call checkLandingPage to see if they have one in the system
+- If landing page exists, mention it and ask if they want to include it
+- Call findMatchedBuyers BEFORE creating the campaign if user wants buyer matching
+- After gathering ALL information, create the campaign and then configure it
+- Show a summary of all settings before final creation
 
 CRITICAL RULES:
-- NEVER skip asking about buyers, landing page, follow-ups, email composition, and scheduling
-- ALWAYS get explicit confirmation before creating the campaign
-- If user seems uncertain about any option, explain the benefits
-- Keep track of their answers and use them when creating/configuring the campaign
+- Ask all configuration questions together, don't do it step-by-step
+- Automatically check for landing pages when domain is mentioned
+- Keep responses concise and actionable
+- Guide users but respect their choices
 
-Be conversational, friendly, and consultative. Guide them through best practices but respect their choices. Keep responses concise but informative.`;
+Be conversational, friendly, and efficient. Get all info in 1-2 exchanges, not 8 separate steps.`;
 
 class AIAgentService {
   // Get or create chat session
@@ -466,21 +448,49 @@ class AIAgentService {
 
   async checkLandingPage({ domainName }, userId) {
     try {
-      // Check if a landing page exists for this domain
-      // This is a placeholder - you can integrate with actual landing page service
+      console.log(`🔍 Checking for landing page: ${domainName} for user ${userId}`);
       
-      // For now, we'll return a simple response
-      return {
-        success: true,
-        exists: false,
-        message: `No landing page found for ${domainName}. You can create one to increase buyer engagement by up to 40%!`,
-        suggestion: `Recommended URL format: https://yoursite.com/domains/${domainName}`
-      };
+      // Query the landing_pages table to see if user has created one
+      const result = await pool.query(
+        `SELECT id, landing_page_url, domain_name, created_at, updated_at
+         FROM landing_pages
+         WHERE domain_name = $1 AND user_id = $2
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [domainName, userId]
+      );
+      
+      if (result.rows.length > 0) {
+        const landingPage = result.rows[0];
+        console.log(`✅ Landing page found: ${landingPage.landing_page_url}`);
+        
+        return {
+          success: true,
+          exists: true,
+          landingPage: {
+            id: landingPage.id,
+            url: landingPage.landing_page_url,
+            domain: landingPage.domain_name,
+            createdAt: landingPage.created_at
+          },
+          message: `✅ Great news! You already have a landing page for ${domainName}: ${landingPage.landing_page_url}. Would you like to include it in your emails? (This can increase buyer engagement by up to 40%!)`
+        };
+      } else {
+        console.log(`❌ No landing page found for ${domainName}`);
+        
+        return {
+          success: true,
+          exists: false,
+          message: `No landing page found for ${domainName}. You can create one later in your dashboard to increase buyer engagement by up to 40%!`,
+          suggestion: `Tip: Landing pages showcase your domain's value and significantly improve conversion rates.`
+        };
+      }
     } catch (error) {
       console.error('Error checking landing page:', error);
       return {
         success: false,
-        error: error.message
+        error: error.message,
+        message: 'Unable to check for landing page at this time.'
       };
     }
   }
