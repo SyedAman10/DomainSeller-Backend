@@ -452,9 +452,9 @@ class AIAgentService {
       
       // Query the landing_pages table to see if user has created one
       const result = await pool.query(
-        `SELECT id, landing_page_url, domain_name, created_at, updated_at
+        `SELECT id, landing_page_id, page_url, domain_name, page_title, is_active, created_at, updated_at
          FROM landing_pages
-         WHERE domain_name = $1 AND user_id = $2
+         WHERE domain_name = $1 AND user_id = $2 AND is_active = true
          ORDER BY created_at DESC
          LIMIT 1`,
         [domainName, userId]
@@ -462,18 +462,20 @@ class AIAgentService {
       
       if (result.rows.length > 0) {
         const landingPage = result.rows[0];
-        console.log(`✅ Landing page found: ${landingPage.landing_page_url}`);
+        console.log(`✅ Landing page found: ${landingPage.page_url}`);
         
         return {
           success: true,
           exists: true,
           landingPage: {
             id: landingPage.id,
-            url: landingPage.landing_page_url,
+            landing_page_id: landingPage.landing_page_id,
+            url: landingPage.page_url,
             domain: landingPage.domain_name,
+            title: landingPage.page_title,
             createdAt: landingPage.created_at
           },
-          message: `✅ Great news! You already have a landing page for ${domainName}: ${landingPage.landing_page_url}. Would you like to include it in your emails? (This can increase buyer engagement by up to 40%!)`
+          message: `✅ Great news! You already have a landing page for ${domainName}: ${landingPage.page_url}. Would you like to include it in your emails? (This can increase buyer engagement by up to 40%!)`
         };
       } else {
         console.log(`❌ No landing page found for ${domainName}`);
@@ -497,47 +499,94 @@ class AIAgentService {
 
   async findMatchedBuyers({ domainName, targetIndustry, limit = 50 }, userId) {
     try {
+      console.log(`🔍 Finding matched buyers for: ${domainName}, industry: ${targetIndustry || 'any'}`);
+      
+      // Extract keywords from domain name for better matching
+      const domainKeywords = domainName
+        .replace(/\.(com|net|org|io|co|app|dev|ai)$/i, '')
+        .replace(/[^a-z0-9]/gi, ' ')
+        .toLowerCase()
+        .trim();
+      
       let query = `
         SELECT 
-          buyer_id,
-          buyer_name,
-          buyer_email,
-          company_name,
-          industry,
-          country,
-          city
-        FROM buyers
-        WHERE 1=1
+          id,
+          title,
+          snippet,
+          url,
+          contact_email,
+          author_name,
+          intent,
+          confidence_score,
+          matched_keywords,
+          query_used,
+          created_at
+        FROM domain_buyer_leads
+        WHERE status = 'new'
       `;
       
       const params = [];
       let paramCount = 0;
       
-      // Filter by target industry if provided
+      // Filter by target industry if provided (search in title, snippet, query_used)
       if (targetIndustry) {
         paramCount++;
-        query += ` AND (industry ILIKE $${paramCount} OR keywords ILIKE $${paramCount})`;
+        query += ` AND (
+          title ILIKE $${paramCount} OR 
+          snippet ILIKE $${paramCount} OR
+          query_used ILIKE $${paramCount}
+        )`;
         params.push(`%${targetIndustry}%`);
       }
       
+      // Also filter by domain keywords to find relevant buyers
+      if (domainKeywords) {
+        paramCount++;
+        query += ` AND (
+          title ILIKE $${paramCount} OR 
+          snippet ILIKE $${paramCount} OR
+          query_used ILIKE $${paramCount}
+        )`;
+        params.push(`%${domainKeywords}%`);
+      }
+      
+      // Order by intent (HOT first) and confidence score
+      query += ` ORDER BY 
+        CASE intent 
+          WHEN 'HOT' THEN 1
+          WHEN 'WARM' THEN 2
+          WHEN 'COLD' THEN 3
+        END,
+        confidence_score DESC,
+        created_at DESC`;
+      
       // Add limit
       paramCount++;
-      query += ` ORDER BY created_at DESC LIMIT $${paramCount}`;
+      query += ` LIMIT $${paramCount}`;
       params.push(limit);
       
       const result = await pool.query(query, params);
+      
+      console.log(`✅ Found ${result.rows.length} matched buyers`);
       
       return {
         success: true,
         buyers: result.rows,
         count: result.rows.length,
-        message: `Found ${result.rows.length} matched buyers${targetIndustry ? ` in ${targetIndustry} industry` : ''}`
+        message: `Found ${result.rows.length} potential buyers${targetIndustry ? ` in ${targetIndustry} industry` : ''}${domainKeywords ? ` matching "${domainKeywords}"` : ''}`,
+        breakdown: {
+          hot: result.rows.filter(b => b.intent === 'HOT').length,
+          warm: result.rows.filter(b => b.intent === 'WARM').length,
+          cold: result.rows.filter(b => b.intent === 'COLD').length,
+          withEmail: result.rows.filter(b => b.contact_email).length
+        }
       };
     } catch (error) {
       console.error('Error finding matched buyers:', error);
       return {
         success: false,
-        error: error.message
+        error: error.message,
+        message: 'Unable to find matched buyers at this time.'
       };
     }
   }
