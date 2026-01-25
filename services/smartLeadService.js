@@ -389,24 +389,61 @@ async function scrapeLeads(options) {
 function prepareActorInput(actor, options) {
   const { keyword, location, industry, count } = options;
 
+  // Map common keywords to Apify's exact industry names
+  const getIndustryFromKeyword = (kw) => {
+    const lower = kw.toLowerCase();
+    
+    // Tech-related keywords
+    if (lower.includes('tech') || lower.includes('software') || lower.includes('saas')) {
+      return ['information technology & services', 'computer software', 'internet'];
+    }
+    
+    // Healthcare keywords
+    if (lower.includes('health') || lower.includes('medical') || lower.includes('hospital')) {
+      return ['hospital & health care', 'medical practice', 'medical devices'];
+    }
+    
+    // Finance keywords
+    if (lower.includes('finance') || lower.includes('banking') || lower.includes('investment')) {
+      return ['financial services', 'banking', 'investment management'];
+    }
+    
+    // Marketing keywords
+    if (lower.includes('marketing') || lower.includes('advertising')) {
+      return ['marketing & advertising'];
+    }
+    
+    // Real estate keywords
+    if (lower.includes('real estate') || lower.includes('property')) {
+      return ['real estate', 'commercial real estate'];
+    }
+    
+    // E-commerce/Retail keywords
+    if (lower.includes('ecommerce') || lower.includes('retail') || lower.includes('shop')) {
+      return ['retail', 'internet', 'consumer goods'];
+    }
+    
+    return null;
+  };
+
   switch (actor) {
     case LEAD_ACTORS.LEADS_FINDER:
-      // code_crafter/leads-finder expects fetch_count, not maxResults
+      const industryFilter = getIndustryFromKeyword(keyword);
+      
       return {
-        fetch_count: count,  // THIS is what controls the number of leads!
+        fetch_count: count,
         email_status: ['validated'],
-        // Note: location filtering removed - actor has very strict location format requirements
-        // Users can filter leads by location after receiving results
-        // If keyword contains job titles or seniority, add filters
-        ...(keyword.toLowerCase().includes('ceo') || keyword.toLowerCase().includes('founder') 
-          ? { seniority_level: ['founder', 'c_suite'] } 
+        // Add seniority filter if keyword mentions leadership roles
+        ...(keyword.toLowerCase().includes('ceo') || 
+            keyword.toLowerCase().includes('founder') ||
+            keyword.toLowerCase().includes('director') ||
+            keyword.toLowerCase().includes('vp') ||
+            keyword.toLowerCase().includes('chief')
+          ? { seniority_level: ['founder', 'c_suite', 'vp'] } 
           : {}
         ),
-        // If keyword contains specific industries, add filters
-        ...(keyword.toLowerCase().includes('tech') || keyword.toLowerCase().includes('technology')
-          ? { company_industry: ['technology'] }
-          : industry && { company_industry: [industry.toLowerCase()] }
-        )
+        // Add industry filter if detected from keyword
+        ...(industryFilter ? { company_industry: industryFilter } : {})
       };
 
     case LEAD_ACTORS.GOOGLE_MAPS:
