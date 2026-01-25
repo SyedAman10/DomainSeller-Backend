@@ -801,23 +801,17 @@ router.post('/generate', async (req, res) => {
 
     res.json({
       success: true,
-      data: {
-        leads: result.leads,
-        metadata: {
-          keyword,
-          requested: count,
-          returned: result.leads.length,
-          totalFound: result.totalFound,
-          source: result.source,
-          fromCache: result.fromCache || 0,
-          fromScraping: result.fromScraping || 0,
-          scrapingUsed: result.scrapingUsed,
-          cacheEfficiency: result.totalFound > 0 
-            ? `${Math.round((result.fromCache || 0) / result.totalFound * 100)}%` 
-            : '0%',
-          duration: `${duration}s`
-        }
-      }
+      source: result.source,
+      leads: result.leads,
+      totalFound: result.totalFound,
+      requested: count,
+      fromCache: result.fromCache || 0,
+      fromScraping: result.fromScraping || 0,
+      scrapingUsed: result.scrapingUsed,
+      cacheEfficiency: result.totalFound > 0 
+        ? `${Math.round((result.fromCache || 0) / result.totalFound * 100)}%` 
+        : '0%',
+      duration: `${duration}s`
     });
 
   } catch (error) {
