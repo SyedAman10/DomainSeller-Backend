@@ -353,10 +353,13 @@ async function scrapeLeads(options) {
     console.log('┌─────────────────────────────────────────────────────────────────┐');
     console.log(`│ Stored: ${transformedLeads.length} unique leads`);
     console.log(`│ Duplicates Skipped: ${items.length - transformedLeads.length}`);
+    console.log(`│ Requested Count: ${count}`);
+    console.log(`│ Returning: ${Math.min(transformedLeads.length, count)} leads`);
     console.log('└─────────────────────────────────────────────────────────────────┘');
     console.log('━'.repeat(80) + '\n');
 
-    return transformedLeads;
+    // Return only the requested count
+    return transformedLeads.slice(0, count);
 
   } catch (error) {
     console.error(`❌ Error scraping with ${actor}:`, error);
