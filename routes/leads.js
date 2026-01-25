@@ -404,6 +404,73 @@ router.get('/stats', async (req, res) => {
 });
 
 /**
+ * GET /api/leads/search
+ * Search existing cached leads without scraping
+ * 
+ * Query Parameters:
+ * - keyword: Search keyword (required)
+ * - location: Location filter (optional)
+ * - industry: Industry filter (optional)
+ * - limit: Max results (default: 10, max: 100)
+ */
+router.get('/search', async (req, res) => {
+  console.log('\n🔍 Searching Cached Leads');
+  
+  try {
+    const {
+      keyword,
+      location,
+      industry,
+      limit = 10
+    } = req.query;
+
+    if (!keyword) {
+      return res.status(400).json({
+        success: false,
+        error: 'keyword query parameter is required'
+      });
+    }
+
+    const limitNum = Math.min(parseInt(limit) || 10, 100);
+
+    console.log(`   Keyword: "${keyword}"`);
+    console.log(`   Location: ${location || 'Any'}`);
+    console.log(`   Industry: ${industry || 'Any'}`);
+    console.log(`   Limit: ${limitNum}`);
+
+    const leads = await searchCachedLeads({
+      keyword,
+      location,
+      industry,
+      limit: limitNum
+    });
+
+    console.log(`✅ Found ${leads.length} cached leads`);
+
+    res.json({
+      success: true,
+      data: {
+        leads,
+        count: leads.length,
+        keyword,
+        filters: {
+          location: location || null,
+          industry: industry || null
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error searching leads:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to search leads',
+      message: error.message
+    });
+  }
+});
+
+/**
  * GET /api/leads/:id
  * Get single lead by ID
  */
@@ -830,73 +897,6 @@ router.post('/generate', async (req, res) => {
       error: 'Failed to generate leads',
       message: error.message,
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-});
-
-/**
- * GET /api/leads/search
- * Search existing cached leads without scraping
- * 
- * Query Parameters:
- * - keyword: Search keyword (required)
- * - location: Location filter (optional)
- * - industry: Industry filter (optional)
- * - limit: Max results (default: 10, max: 100)
- */
-router.get('/search', async (req, res) => {
-  console.log('\n🔍 Searching Cached Leads');
-  
-  try {
-    const {
-      keyword,
-      location,
-      industry,
-      limit = 10
-    } = req.query;
-
-    if (!keyword) {
-      return res.status(400).json({
-        success: false,
-        error: 'keyword query parameter is required'
-      });
-    }
-
-    const limitNum = Math.min(parseInt(limit) || 10, 100);
-
-    console.log(`   Keyword: "${keyword}"`);
-    console.log(`   Location: ${location || 'Any'}`);
-    console.log(`   Industry: ${industry || 'Any'}`);
-    console.log(`   Limit: ${limitNum}`);
-
-    const leads = await searchCachedLeads({
-      keyword,
-      location,
-      industry,
-      limit: limitNum
-    });
-
-    console.log(`✅ Found ${leads.length} cached leads`);
-
-    res.json({
-      success: true,
-      data: {
-        leads,
-        count: leads.length,
-        keyword,
-        filters: {
-          location: location || null,
-          industry: industry || null
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error searching leads:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to search leads',
-      message: error.message
     });
   }
 });
