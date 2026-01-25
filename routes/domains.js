@@ -55,7 +55,7 @@ router.get('/check-landing-page', async (req, res) => {
         created_at, 
         updated_at
        FROM landing_pages
-       WHERE domain_name = $1 AND user_id = $2 AND is_active = true
+       WHERE domain = $1 AND user_id = $2 AND is_active = true
        ORDER BY created_at DESC
        LIMIT 1`,
       [cleanDomain, userIdNum]
