@@ -425,27 +425,29 @@ router.get('/search', async (req, res) => {
       userId  // NEW: Accept userId from query params
     } = req.query;
 
-    if (!keyword) {
+    // Make keyword optional if userId is provided
+    if (!keyword && !userId) {
       return res.status(400).json({
         success: false,
-        error: 'keyword query parameter is required'
+        error: 'Either keyword or userId query parameter is required'
       });
     }
 
     const limitNum = Math.min(parseInt(limit) || 10, 100);
+    const userIdNum = userId ? parseInt(userId) : null;
 
-    console.log(`   Keyword: "${keyword}"`);
+    console.log(`   Keyword: "${keyword || 'All'}"`);
     console.log(`   Location: ${location || 'Any'}`);
     console.log(`   Industry: ${industry || 'Any'}`);
     console.log(`   Limit: ${limitNum}`);
-    console.log(`   User ID: ${userId || 'All users'}`);
+    console.log(`   User ID: ${userIdNum || 'All users'}`);
 
     const leads = await searchCachedLeads({
-      keyword,
+      keyword: keyword || '',  // Empty string if not provided
       location,
       industry,
       limit: limitNum,
-      userId: userId ? parseInt(userId) : null  // Pass userId if provided
+      userId: userIdNum  // Pass userId as integer
     });
 
     console.log(`✅ Found ${leads.length} cached leads`);
@@ -455,11 +457,11 @@ router.get('/search', async (req, res) => {
       data: {
         leads,
         count: leads.length,
-        keyword,
+        keyword: keyword || 'All',
         filters: {
           location: location || null,
           industry: industry || null,
-          userId: userId || null
+          userId: userIdNum
         }
       }
     });

@@ -209,7 +209,8 @@ async function searchCachedLeads(filters) {
     }
 
     // Keyword matching (search in title, snippet, company_name, description)
-    if (keyword) {
+    // Make keyword optional - if empty, just filter by user_id
+    if (keyword && keyword.trim() && keyword !== '*') {
       whereConditions.push(`(
         title ILIKE $${paramIndex} OR 
         snippet ILIKE $${paramIndex} OR 
