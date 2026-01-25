@@ -253,6 +253,19 @@ async function searchCachedLeads(filters) {
         query_used,
         confidence_score,
         intent,
+        first_name,
+        last_name,
+        full_name,
+        job_title,
+        seniority,
+        company_domain,
+        company_linkedin,
+        company_phone,
+        company_revenue_clean,
+        company_total_funding,
+        company_total_funding_clean,
+        company_technologies,
+        keywords,
         created_at
       FROM generated_leads
       ${whereClause}
