@@ -15,13 +15,12 @@ const {
  * Check if a domain has a landing page in the system
  * Query params:
  * - domain: Domain name to check (required)
- * - userId: User ID (required for user-specific check)
  */
 router.get('/check-landing-page', async (req, res) => {
   console.log('\n🔍 Checking domain landing page...');
   
   try {
-    const { domain, userId } = req.query;
+    const { domain } = req.query;
 
     // Validation
     if (!domain) {
@@ -31,19 +30,10 @@ router.get('/check-landing-page', async (req, res) => {
       });
     }
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId query parameter is required'
-      });
-    }
-
     // Clean domain name
     const cleanDomain = domain.toLowerCase().trim();
-    const userIdNum = parseInt(userId);
 
     console.log(`   Domain: ${cleanDomain}`);
-    console.log(`   User ID: ${userIdNum}`);
 
     // Query landing_pages table
     const result = await query(
@@ -55,10 +45,10 @@ router.get('/check-landing-page', async (req, res) => {
         created_at, 
         updated_at
        FROM landing_pages
-       WHERE domain = $1 AND user_id = $2 AND is_active = true
+       WHERE domain = $1 AND is_active = true
        ORDER BY created_at DESC
        LIMIT 1`,
-      [cleanDomain, userIdNum]
+      [cleanDomain]
     );
 
     if (result.rows.length > 0) {
