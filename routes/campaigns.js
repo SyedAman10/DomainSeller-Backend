@@ -16,11 +16,11 @@ const openai = new OpenAI({
 
 /**
  * POST /api/campaigns/generate-ai-email
- * Generate AI email templates for a campaign (initial + follow-ups)
- * Templates are saved and reused for all buyers in the campaign
+ * Generate AI emails for campaign and personalize for all buyers
+ * Returns ready-to-send emails (initial + follow-ups if enabled)
  */
 router.post('/generate-ai-email', async (req, res) => {
-  console.log('\n🤖 AI EMAIL TEMPLATE GENERATION');
+  console.log('\n🤖 AI EMAIL GENERATION & PERSONALIZATION');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   try {
@@ -35,7 +35,8 @@ router.post('/generate-ai-email', async (req, res) => {
       followUpDays = [3, 7, 14],
       sellerName = 'Domain Owner',
       sellerEmail = '',
-      customInstructions = ''
+      customInstructions = '',
+      buyers = [] // Array of buyers to personalize for
     } = req.body;
 
     // Validation
@@ -46,9 +47,17 @@ router.post('/generate-ai-email', async (req, res) => {
       });
     }
 
+    if (!buyers || !Array.isArray(buyers) || buyers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'buyers array is required (at least 1 buyer)'
+      });
+    }
+
     console.log(`🌐 Domain: ${domainName}`);
     console.log(`💰 Price: ${askingPrice ? `$${askingPrice.toLocaleString()}` : 'Negotiable'}`);
     console.log(`🎯 Industry: ${targetIndustry || 'Any'}`);
+    console.log(`👥 Buyers: ${buyers.length}`);
     console.log(`📧 Follow-ups: ${includeFollowUps ? followUpDays.length : 0}`);
 
     // Build AI prompt for initial email
@@ -249,112 +258,82 @@ Return as JSON: { "subject": "...", "html": "...", "text": "..." }`;
     }
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('✅ AI EMAIL TEMPLATES GENERATED\n');
+    console.log('✅ AI EMAIL GENERATION COMPLETE');
+    console.log(`📧 Generated ${buyers.length} personalized emails (${includeFollowUps ? followUpDays.length + 1 : 1} variants each)\n`);
 
-    res.json({
-      success: true,
-      templates: {
-        initial: {
-          subject: initialEmail.subject,
-          html: initialEmail.html,
-          text: initialEmail.text
-        },
-        followUps: followUpTemplates
-      },
-      campaign: {
-        domain: domainName,
-        askingPrice,
-        targetIndustry
-      },
-      message: `Generated ${1 + followUpTemplates.length} email templates (1 initial + ${followUpTemplates.length} follow-ups)`,
-      usage: {
-        totalTemplates: 1 + followUpTemplates.length,
-        placeholders: ['{{buyerName}}', '{{companyName}}']
-      }
-    });
+    // Helper function to personalize a template
+    const personalizeTemplate = (template, buyer) => {
+      const buyerName = buyer.full_name || buyer.first_name || buyer.contact_person || 'there';
+      const companyName = buyer.company_name || '';
 
-  } catch (error) {
-    console.error('❌ Error generating AI email templates:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to generate AI email templates',
-      message: error.message
-    });
-  }
-});
+      return {
+        subject: template.subject
+          .replace(/\{\{buyerName\}\}/g, buyerName)
+          .replace(/\{\{companyName\}\}/g, companyName),
+        html: template.html
+          .replace(/\{\{buyerName\}\}/g, buyerName)
+          .replace(/\{\{companyName\}\}/g, companyName),
+        text: template.text
+          .replace(/\{\{buyerName\}\}/g, buyerName)
+          .replace(/\{\{companyName\}\}/g, companyName)
+      };
+    };
 
-/**
- * POST /api/campaigns/personalize-email
- * Personalize email templates with buyer information
- * Takes a template and replaces {{buyerName}} and {{companyName}} with actual values
- */
-router.post('/personalize-email', async (req, res) => {
-  console.log('\n📝 PERSONALIZING EMAIL TEMPLATES');
-  
-  try {
-    const { template, buyers } = req.body;
-
-    if (!template || !template.subject) {
-      return res.status(400).json({
-        success: false,
-        error: 'template with subject, html, and text is required'
-      });
-    }
-
-    if (!buyers || !Array.isArray(buyers) || buyers.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'buyers array is required'
-      });
-    }
-
-    console.log(`📧 Personalizing template for ${buyers.length} buyers`);
-
-    // Personalize emails for each buyer
+    // Personalize initial email for all buyers
     const personalizedEmails = buyers.map(buyer => {
       const buyerName = buyer.full_name || buyer.first_name || buyer.contact_person || 'there';
       const companyName = buyer.company_name || '';
 
-      // Replace placeholders in templates
-      const personalizedSubject = template.subject
-        .replace(/\{\{buyerName\}\}/g, buyerName)
-        .replace(/\{\{companyName\}\}/g, companyName);
+      const personalizedInitial = personalizeTemplate(initialEmail, buyer);
 
-      const personalizedHtml = template.html
-        .replace(/\{\{buyerName\}\}/g, buyerName)
-        .replace(/\{\{companyName\}\}/g, companyName);
-
-      const personalizedText = template.text
-        .replace(/\{\{buyerName\}\}/g, buyerName)
-        .replace(/\{\{companyName\}\}/g, companyName);
+      // Personalize follow-ups for this buyer
+      const personalizedFollowUps = followUpTemplates.map(followUp => ({
+        sequence: followUp.sequence,
+        days_after: followUp.days_after,
+        type: followUp.type,
+        ...personalizeTemplate(followUp, buyer)
+      }));
 
       return {
         to: buyer.email,
-        subject: personalizedSubject,
-        html: personalizedHtml,
-        text: personalizedText,
         buyer: {
           id: buyer.id,
           name: buyerName,
           company: companyName,
           email: buyer.email
-        }
+        },
+        initial: {
+          to: buyer.email,
+          subject: personalizedInitial.subject,
+          html: personalizedInitial.html,
+          text: personalizedInitial.text
+        },
+        followUps: personalizedFollowUps
       };
     });
-
-    console.log(`✅ Personalized ${personalizedEmails.length} emails`);
 
     res.json({
       success: true,
       emails: personalizedEmails,
-      message: `Personalized ${personalizedEmails.length} emails`
+      campaign: {
+        domain: domainName,
+        askingPrice,
+        targetIndustry
+      },
+      summary: {
+        totalBuyers: buyers.length,
+        emailsPerBuyer: 1 + followUpTemplates.length,
+        totalEmails: buyers.length * (1 + followUpTemplates.length),
+        followUpDays: includeFollowUps ? followUpDays : []
+      },
+      message: `Generated ${buyers.length * (1 + followUpTemplates.length)} personalized emails for ${buyers.length} buyers`
     });
 
   } catch (error) {
-    console.error('❌ Error personalizing templates:', error);
+    console.error('❌ Error generating AI emails:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to personalize templates',
+      error: 'Failed to generate AI emails',
       message: error.message
     });
   }
