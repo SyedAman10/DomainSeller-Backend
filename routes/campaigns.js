@@ -16,17 +16,18 @@ const openai = new OpenAI({
 
 /**
  * POST /api/campaigns/generate-ai-email
- * Generate personalized AI email for a buyer using campaign settings
+ * Generate personalized AI email templates for a campaign (initial + follow-ups)
+ * These templates are saved and reused for all buyers in the campaign
  */
 router.post('/generate-ai-email', async (req, res) => {
-  console.log('\n🤖 AI EMAIL GENERATION REQUEST');
+  console.log('\n🤖 AI EMAIL TEMPLATE GENERATION REQUEST');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   try {
     const {
       campaignId,
-      buyerInfo,
-      customInstructions
+      sampleBuyerInfo, // Optional: provide sample buyer for more relevant generation
+      regenerate = false // Set to true to regenerate even if templates exist
     } = req.body;
 
     // Validation
@@ -37,16 +38,7 @@ router.post('/generate-ai-email', async (req, res) => {
       });
     }
 
-    if (!buyerInfo || !buyerInfo.email) {
-      return res.status(400).json({
-        success: false,
-        error: 'buyerInfo with email is required'
-      });
-    }
-
     console.log(`📋 Campaign ID: ${campaignId}`);
-    console.log(`👤 Buyer: ${buyerInfo.company_name || buyerInfo.full_name || 'Unknown'}`);
-    console.log(`📧 Buyer Email: ${buyerInfo.email}`);
 
     // Get campaign details
     const campaignResult = await query(
@@ -65,6 +57,35 @@ router.post('/generate-ai-email', async (req, res) => {
     console.log(`✅ Campaign found: ${campaign.campaign_name}`);
     console.log(`🌐 Domain: ${campaign.domain_name}`);
 
+    // Check if templates already exist
+    if (campaign.email_template_subject && !regenerate) {
+      console.log('📧 Email templates already exist for this campaign');
+      
+      const existingTemplates = {
+        initial: {
+          subject: campaign.email_template_subject,
+          html: campaign.email_template_html,
+          text: campaign.email_template_text
+        }
+      };
+
+      // Parse follow-up templates if they exist
+      if (campaign.followup_templates) {
+        existingTemplates.followUps = campaign.followup_templates;
+      }
+
+      return res.json({
+        success: true,
+        templates: existingTemplates,
+        message: 'Using existing email templates. Set regenerate=true to create new ones.',
+        campaign: {
+          id: campaign.campaign_id,
+          name: campaign.campaign_name,
+          domain: campaign.domain_name
+        }
+      });
+    }
+
     // Get user details for signature
     const userResult = await query(
       `SELECT username, email FROM users WHERE id = $1`,
@@ -73,22 +94,16 @@ router.post('/generate-ai-email', async (req, res) => {
 
     const seller = userResult.rows[0] || { username: 'Domain Owner', email: '' };
 
-    // Build AI prompt based on campaign settings and buyer info
-    const buyerName = buyerInfo.full_name || buyerInfo.first_name || buyerInfo.contact_person || 'there';
-    const companyName = buyerInfo.company_name || '';
-    const jobTitle = buyerInfo.job_title || buyerInfo.title || '';
-    const industry = buyerInfo.industry || '';
-    const buyerLocation = buyerInfo.city && buyerInfo.country 
-      ? `${buyerInfo.city}, ${buyerInfo.country}` 
-      : (buyerInfo.location || '');
-    const companyWebsite = buyerInfo.website || buyerInfo.company_domain || '';
-    const companyDescription = buyerInfo.description || '';
-    const employeeCount = buyerInfo.employee_count || buyerInfo.company_size || '';
-    const revenue = buyerInfo.revenue || buyerInfo.company_revenue_clean || '';
-    const seniority = buyerInfo.seniority || '';
+    // Build sample buyer context (use provided or generic)
+    const buyerName = sampleBuyerInfo?.full_name || sampleBuyerInfo?.first_name || '[Buyer Name]';
+    const companyName = sampleBuyerInfo?.company_name || '[Company Name]';
+    const jobTitle = sampleBuyerInfo?.job_title || 'decision maker';
+    const industry = sampleBuyerInfo?.industry || campaign.target_industry || 'their industry';
 
-    // Create detailed context for AI
-    const systemPrompt = `You are an expert domain sales email writer. Generate a highly personalized, professional email to pitch the domain "${campaign.domain_name}" to a potential buyer.
+    // Generate initial email
+    console.log('🚀 Generating INITIAL email template...');
+    
+    const initialPrompt = `You are an expert domain sales email writer. Generate a professional, compelling INITIAL OUTREACH email to pitch the domain "${campaign.domain_name}".
 
 CAMPAIGN DETAILS:
 - Domain: ${campaign.domain_name}
@@ -97,111 +112,317 @@ CAMPAIGN DETAILS:
 - Campaign Description: ${campaign.description || 'N/A'}
 - Landing Page: ${campaign.include_landing_page && campaign.landing_page_url ? campaign.landing_page_url : 'None'}
 
-BUYER INFORMATION:
-- Name: ${buyerName}
-- Company: ${companyName}
-- Job Title: ${jobTitle}
-- Seniority: ${seniority}
-- Industry: ${industry}
-- Location: ${buyerLocation}
-- Company Website: ${companyWebsite}
-- Company Description: ${companyDescription}
-- Employee Count: ${employeeCount}
-- Revenue: ${revenue}
-
 SELLER INFORMATION:
 - Name: ${seller.username}
 - Email: ${seller.email}
 
 EMAIL WRITING GUIDELINES:
-1. **Personalization is KEY**: Use the buyer's company name, industry, and job title to make it relevant
-2. **Hook**: Start with a compelling reason why THIS domain is perfect for THEIR specific business
-3. **Value Proposition**: Explain how the domain aligns with their industry and business goals
-4. **Brevity**: Keep it concise - 3-4 short paragraphs maximum
-5. **Professional tone**: Match the buyer's seniority level (more formal for C-suite, friendly for others)
-6. **No pushy sales**: Focus on value and fit, not aggressive selling
-7. **Clear CTA**: End with a simple question or call-to-action
-8. **Price handling**: Only mention price if buyer is C-suite/Owner, otherwise focus on value first
-9. **Landing page**: If available, naturally mention they can learn more at the landing page
-10. **Signature**: Always end with seller's name and email
+1. Use placeholders {{buyerName}} and {{companyName}} for personalization
+2. Hook: Start with a compelling reason why this domain is valuable
+3. Value: Explain domain benefits (branding, SEO, credibility, memorability)
+4. Industry Relevance: Mention how it fits ${industry} businesses
+5. Brevity: Keep it 3-4 short paragraphs
+6. Professional but friendly tone
+7. No pushy sales tactics
+8. End with simple question or CTA
+9. Don't mention price in initial email unless buyer is C-suite
+10. If landing page exists, mention it naturally
+11. Sign off with: "Best regards, ${seller.username}"
 
-${customInstructions ? `\nADDITIONAL INSTRUCTIONS:\n${customInstructions}` : ''}
-
-Generate TWO versions of the email:
-1. HTML version (professionally formatted with proper HTML structure)
-2. Plain text version (clean, readable text)
+Generate TWO versions:
+1. HTML (professionally formatted, clean design)
+2. Plain text (readable, well-structured)
 
 Return as JSON: { "subject": "...", "html": "...", "text": "..." }`;
 
-    console.log('🚀 Calling OpenAI API to generate personalized email...');
-
-    const completion = await openai.chat.completions.create({
+    const initialCompletion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
       messages: [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
-        {
-          role: 'user',
-          content: `Generate a highly personalized email for ${buyerName} at ${companyName || 'their company'} about the domain ${campaign.domain_name}. Make it feel like it was written specifically for them based on their company and role.`
-        }
+        { role: 'system', content: initialPrompt },
+        { role: 'user', content: `Generate the initial outreach email for ${campaign.domain_name}. Use {{buyerName}} and {{companyName}} as placeholders.` }
       ],
       response_format: { type: "json_object" },
       temperature: 0.8,
       max_tokens: 2000
     });
 
-    const aiResponse = JSON.parse(completion.choices[0].message.content);
-    console.log('✅ AI email generated successfully');
-    console.log(`📧 Subject: ${aiResponse.subject}`);
+    const initialEmail = JSON.parse(initialCompletion.choices[0].message.content);
+    console.log('✅ Initial email generated');
+    console.log(`📧 Subject: ${initialEmail.subject}`);
 
-    // Add landing page link if enabled
+    // Generate follow-up emails if enabled
+    const followUpTemplates = [];
+    
+    if (campaign.include_follow_ups && campaign.follow_up_days && campaign.follow_up_days.length > 0) {
+      console.log(`📨 Generating ${campaign.follow_up_days.length} follow-up email templates...`);
+      
+      const followUpTypes = [
+        { type: 'value_add', focus: 'Share additional value and benefits of the domain' },
+        { type: 'final_offer', focus: 'Create urgency with limited-time offer or other interested buyers' },
+        { type: 'last_chance', focus: 'Final polite reminder and last chance to discuss' }
+      ];
+
+      for (let i = 0; i < Math.min(campaign.follow_up_days.length, 3); i++) {
+        const day = campaign.follow_up_days[i];
+        const followUpType = followUpTypes[i] || followUpTypes[followUpTypes.length - 1];
+
+        console.log(`   Generating ${followUpType.type} (Day ${day})...`);
+
+        const followUpPrompt = `Generate a ${followUpType.type.toUpperCase()} follow-up email for the domain ${campaign.domain_name}.
+
+CONTEXT: This is follow-up #${i + 1}, sent ${day} days after the initial email. The buyer hasn't responded yet.
+
+${followUpType.type === 'value_add' ? `
+FOCUS: Share MORE VALUE
+- Highlight additional benefits they might have missed
+- Mention specific use cases for their industry
+- Share domain statistics or market trends
+- Keep tone helpful and informative, not pushy
+` : ''}
+
+${followUpType.type === 'final_offer' ? `
+FOCUS: Create URGENCY
+- Mention other interested buyers (if true)
+- Offer limited-time pricing consideration
+- Emphasize first-come-first-served nature
+- Still professional, not desperate
+` : ''}
+
+${followUpType.type === 'last_chance' ? `
+FOCUS: Polite FINAL REMINDER
+- Acknowledge they're busy
+- One last chance to discuss
+- Open door for future contact
+- Graceful close if no interest
+- Professional and respectful exit
+` : ''}
+
+Use {{buyerName}} and {{companyName}} placeholders.
+Keep it brief (2-3 paragraphs).
+Sign off with: "Best regards, ${seller.username}"
+
+Return as JSON: { "subject": "...", "html": "...", "text": "..." }`;
+
+        const followUpCompletion = await openai.chat.completions.create({
+          model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
+          messages: [
+            { role: 'system', content: followUpPrompt },
+            { role: 'user', content: `Generate ${followUpType.type} follow-up email template.` }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.8,
+          max_tokens: 1500
+        });
+
+        const followUpEmail = JSON.parse(followUpCompletion.choices[0].message.content);
+        
+        followUpTemplates.push({
+          sequence: i + 1,
+          days_after: day,
+          type: followUpType.type,
+          subject: followUpEmail.subject,
+          html: followUpEmail.html,
+          text: followUpEmail.text
+        });
+
+        console.log(`   ✅ ${followUpType.type} generated (Day ${day})`);
+      }
+    }
+
+    // Add landing page links if enabled
     if (campaign.include_landing_page && campaign.landing_page_url) {
       console.log(`🌐 Adding landing page link: ${campaign.landing_page_url}`);
-      aiResponse.html = addLandingPageLink(
-        aiResponse.html, 
+      
+      initialEmail.html = addLandingPageLink(
+        initialEmail.html, 
         campaign.landing_page_url, 
         campaign.domain_name, 
         'html'
       );
-      aiResponse.text = addLandingPageLink(
-        aiResponse.text, 
+      initialEmail.text = addLandingPageLink(
+        initialEmail.text, 
         campaign.landing_page_url, 
         campaign.domain_name, 
         'text'
       );
+
+      // Add to follow-ups too
+      followUpTemplates.forEach(followUp => {
+        followUp.html = addLandingPageLink(
+          followUp.html,
+          campaign.landing_page_url,
+          campaign.domain_name,
+          'html'
+        );
+        followUp.text = addLandingPageLink(
+          followUp.text,
+          campaign.landing_page_url,
+          campaign.domain_name,
+          'text'
+        );
+      });
     }
 
+    // Save templates to campaign
+    console.log('💾 Saving email templates to campaign...');
+    
+    await query(
+      `UPDATE campaigns 
+       SET email_template_subject = $1,
+           email_template_html = $2,
+           email_template_text = $3,
+           followup_templates = $4,
+           templates_generated_at = NOW(),
+           updated_at = NOW()
+       WHERE campaign_id = $5`,
+      [
+        initialEmail.subject,
+        initialEmail.html,
+        initialEmail.text,
+        JSON.stringify(followUpTemplates),
+        campaign.campaign_id
+      ]
+    );
+
+    console.log('✅ Templates saved to campaign');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('✅ AI EMAIL GENERATION COMPLETE\n');
+    console.log('✅ AI EMAIL TEMPLATE GENERATION COMPLETE\n');
 
     res.json({
       success: true,
-      email: {
-        to: buyerInfo.email,
-        subject: aiResponse.subject,
-        html: aiResponse.html,
-        text: aiResponse.text
-      },
-      buyer: {
-        name: buyerName,
-        company: companyName,
-        email: buyerInfo.email
+      templates: {
+        initial: {
+          subject: initialEmail.subject,
+          html: initialEmail.html,
+          text: initialEmail.text
+        },
+        followUps: followUpTemplates
       },
       campaign: {
         id: campaign.campaign_id,
         name: campaign.campaign_name,
         domain: campaign.domain_name
       },
-      message: 'AI email generated successfully'
+      message: `Generated ${1 + followUpTemplates.length} email templates for campaign`,
+      usage: {
+        initialEmail: 1,
+        followUpEmails: followUpTemplates.length,
+        totalTemplates: 1 + followUpTemplates.length
+      }
     });
 
   } catch (error) {
-    console.error('❌ Error generating AI email:', error);
+    console.error('❌ Error generating AI email templates:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate AI email',
+      error: 'Failed to generate AI email templates',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/campaigns/personalize-template
+ * Personalize saved campaign templates with buyer information
+ * Use this to quickly generate emails for buyers using campaign's saved templates
+ */
+router.post('/personalize-template', async (req, res) => {
+  console.log('\n📝 PERSONALIZING EMAIL TEMPLATE');
+  
+  try {
+    const { campaignId, buyers } = req.body;
+
+    if (!campaignId) {
+      return res.status(400).json({
+        success: false,
+        error: 'campaignId is required'
+      });
+    }
+
+    if (!buyers || !Array.isArray(buyers) || buyers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'buyers array is required'
+      });
+    }
+
+    // Get campaign with templates
+    const campaignResult = await query(
+      `SELECT * FROM campaigns WHERE campaign_id = $1 OR id = $2`,
+      [campaignId, parseInt(campaignId) || 0]
+    );
+
+    if (campaignResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Campaign not found'
+      });
+    }
+
+    const campaign = campaignResult.rows[0];
+
+    // Check if templates exist
+    if (!campaign.email_template_subject) {
+      return res.status(400).json({
+        success: false,
+        error: 'No email templates found for this campaign',
+        message: 'Please generate AI email templates first using /generate-ai-email'
+      });
+    }
+
+    console.log(`✅ Using templates from campaign: ${campaign.campaign_name}`);
+    console.log(`📧 Personalizing for ${buyers.length} buyers`);
+
+    // Personalize emails for each buyer
+    const personalizedEmails = buyers.map(buyer => {
+      const buyerName = buyer.full_name || buyer.first_name || buyer.contact_person || 'there';
+      const companyName = buyer.company_name || '';
+
+      // Replace placeholders in templates
+      let personalizedSubject = campaign.email_template_subject
+        .replace(/\{\{buyerName\}\}/g, buyerName)
+        .replace(/\{\{companyName\}\}/g, companyName);
+
+      let personalizedHtml = campaign.email_template_html
+        .replace(/\{\{buyerName\}\}/g, buyerName)
+        .replace(/\{\{companyName\}\}/g, companyName);
+
+      let personalizedText = campaign.email_template_text
+        .replace(/\{\{buyerName\}\}/g, buyerName)
+        .replace(/\{\{companyName\}\}/g, companyName);
+
+      return {
+        to: buyer.email,
+        subject: personalizedSubject,
+        html: personalizedHtml,
+        text: personalizedText,
+        buyer: {
+          id: buyer.id,
+          name: buyerName,
+          company: companyName,
+          email: buyer.email
+        }
+      };
+    });
+
+    console.log(`✅ Personalized ${personalizedEmails.length} emails`);
+
+    res.json({
+      success: true,
+      emails: personalizedEmails,
+      campaign: {
+        id: campaign.campaign_id,
+        name: campaign.campaign_name,
+        domain: campaign.domain_name
+      },
+      message: `Personalized ${personalizedEmails.length} emails using campaign templates`
+    });
+
+  } catch (error) {
+    console.error('❌ Error personalizing templates:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to personalize templates',
       message: error.message
     });
   }
