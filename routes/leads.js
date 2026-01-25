@@ -421,7 +421,8 @@ router.get('/search', async (req, res) => {
       keyword,
       location,
       industry,
-      limit = 10
+      limit = 10,
+      userId  // NEW: Accept userId from query params
     } = req.query;
 
     if (!keyword) {
@@ -437,12 +438,14 @@ router.get('/search', async (req, res) => {
     console.log(`   Location: ${location || 'Any'}`);
     console.log(`   Industry: ${industry || 'Any'}`);
     console.log(`   Limit: ${limitNum}`);
+    console.log(`   User ID: ${userId || 'All users'}`);
 
     const leads = await searchCachedLeads({
       keyword,
       location,
       industry,
-      limit: limitNum
+      limit: limitNum,
+      userId: userId ? parseInt(userId) : null  // Pass userId if provided
     });
 
     console.log(`✅ Found ${leads.length} cached leads`);
@@ -455,7 +458,8 @@ router.get('/search', async (req, res) => {
         keyword,
         filters: {
           location: location || null,
-          industry: industry || null
+          industry: industry || null,
+          userId: userId || null
         }
       }
     });
@@ -812,7 +816,8 @@ router.post('/generate', async (req, res) => {
       location,
       industry,
       actor,
-      forceRefresh = false
+      forceRefresh = false,
+      userId  // NEW: Accept userId from request body
     } = req.body;
 
     // Validation
@@ -827,7 +832,8 @@ router.post('/generate', async (req, res) => {
           keyword: 'tech companies in NYC',
           count: 5,
           location: 'New York',
-          industry: 'Technology'
+          industry: 'Technology',
+          userId: 1
         }
       });
     }
@@ -849,7 +855,8 @@ router.post('/generate', async (req, res) => {
       location,
       industry,
       actor,
-      forceRefresh
+      forceRefresh,
+      userId  // Pass userId to service
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);

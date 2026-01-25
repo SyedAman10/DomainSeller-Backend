@@ -46,7 +46,8 @@ async function generateLeads(options) {
     location = null,
     industry = null,
     actor = DEFAULT_ACTOR,
-    forceRefresh = false
+    forceRefresh = false,
+    userId  // NEW: User ID for multi-tenant support
   } = options;
 
   console.log('\n🎯 SMART LEAD GENERATION REQUEST');
@@ -59,6 +60,7 @@ async function generateLeads(options) {
   console.log(`│ Industry: ${industry || 'Any'}`);
   console.log(`│ Actor: ${actor}`);
   console.log(`│ Force Refresh: ${forceRefresh}`);
+  console.log(`│ User ID: ${userId || 'Not specified'}`);
   console.log('└─────────────────────────────────────────────────────────────────┘');
 
   try {
@@ -70,7 +72,8 @@ async function generateLeads(options) {
         keyword,
         location,
         industry,
-        limit: count
+        limit: count,
+        userId  // Pass userId to filter cache by user
       });
 
       if (cachedLeads.length >= count) {
@@ -108,7 +111,8 @@ async function generateLeads(options) {
           location,
           industry,
           count: remainingCount,
-          actor
+          actor,
+          userId  // Pass userId for partial scraping
         });
 
         // Combine cached + scraped
@@ -151,7 +155,8 @@ async function generateLeads(options) {
       location,
       industry,
       count,
-      actor
+      actor,
+      userId  // Pass userId for fresh scraping
     });
 
     console.log('\n✅ SCRAPING RESULT:');
@@ -188,13 +193,20 @@ async function generateLeads(options) {
  * @returns {Promise<Array>} - Cached leads
  */
 async function searchCachedLeads(filters) {
-  const { keyword, location, industry, limit = 10 } = filters;
+  const { keyword, location, industry, limit = 10, userId } = filters;
 
   try {
     // Build dynamic WHERE clause
     let whereConditions = [];
     let params = [];
     let paramIndex = 1;
+
+    // IMPORTANT: Filter by user_id for multi-tenant support
+    if (userId) {
+      whereConditions.push(`user_id = $${paramIndex}`);
+      params.push(userId);
+      paramIndex++;
+    }
 
     // Keyword matching (search in title, snippet, company_name, description)
     if (keyword) {
@@ -295,7 +307,8 @@ async function scrapeLeads(options) {
     location,
     industry,
     count = 5,
-    actor = DEFAULT_ACTOR
+    actor = DEFAULT_ACTOR,
+    userId  // NEW: User ID to associate leads with user
   } = options;
 
   console.log(`\n🚀 Starting Apify actor: ${actor}`);
@@ -359,7 +372,8 @@ async function scrapeLeads(options) {
       location,
       industry,
       actor,
-      runId: run.id
+      runId: run.id,
+      userId  // Pass userId to store with each lead
     });
 
     console.log('\n✅ STORAGE COMPLETE:');
@@ -488,7 +502,7 @@ function prepareActorInput(actor, options) {
  * @returns {Promise<Array>} - Stored leads
  */
 async function transformAndStoreLeads(items, metadata) {
-  const { keyword, location, industry, actor, runId } = metadata;
+  const { keyword, location, industry, actor, runId, userId } = metadata;
   const storedLeads = [];
   let duplicateCount = 0;
 
@@ -549,12 +563,13 @@ async function transformAndStoreLeads(items, metadata) {
           company_total_funding,
           company_total_funding_clean,
           company_technologies,
-          keywords
+          keywords,
+          user_id
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
           $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
           $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-          $31, $32, $33, $34, $35, $36, $37
+          $31, $32, $33, $34, $35, $36, $37, $38
         )
         ON CONFLICT (email, website) 
         DO UPDATE SET
@@ -598,7 +613,8 @@ async function transformAndStoreLeads(items, metadata) {
         lead.company_total_funding,
         lead.company_total_funding_clean,
         lead.company_technologies,
-        lead.keywords
+        lead.keywords,
+        userId  // NEW: Save with user_id
       ]);
 
       storedLeads.push(result.rows[0]);
