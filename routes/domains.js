@@ -45,38 +45,40 @@ router.get('/check-landing-page', async (req, res) => {
     console.log(`   Domain: ${cleanDomain}`);
     console.log(`   User ID: ${userIdNum}`);
 
-    // Query landing_pages table
+    // Query campaigns table for landing page URL
     const result = await query(
       `SELECT 
-        id, 
-        page_url, 
+        id,
+        campaign_id,
+        campaign_name,
         domain_name, 
-        page_title, 
-        is_active, 
+        landing_page_url,
+        include_landing_page,
         created_at, 
         updated_at
-       FROM landing_pages
-       WHERE domain_name = $1 AND user_id = $2 AND is_active = true
+       FROM campaigns
+       WHERE domain_name = $1 AND user_id = $2 AND landing_page_url IS NOT NULL AND landing_page_url != ''
        ORDER BY created_at DESC
        LIMIT 1`,
       [cleanDomain, userIdNum]
     );
 
     if (result.rows.length > 0) {
-      const landingPage = result.rows[0];
-      console.log(`✅ Landing page found: ${landingPage.page_url}`);
+      const campaign = result.rows[0];
+      console.log(`✅ Landing page found: ${campaign.landing_page_url}`);
 
       return res.json({
         success: true,
         exists: true,
         data: {
-          id: landingPage.id,
-          url: landingPage.page_url,
-          domain: landingPage.domain_name,
-          title: landingPage.page_title,
-          isActive: landingPage.is_active,
-          createdAt: landingPage.created_at,
-          updatedAt: landingPage.updated_at
+          id: campaign.id,
+          campaignId: campaign.campaign_id,
+          url: campaign.landing_page_url,
+          domain: campaign.domain_name,
+          campaignName: campaign.campaign_name,
+          includeLandingPage: campaign.include_landing_page,
+          createdAt: campaign.created_at,
+          updatedAt: campaign.updated_at
         },
         message: `Landing page exists for ${cleanDomain}`
       });
