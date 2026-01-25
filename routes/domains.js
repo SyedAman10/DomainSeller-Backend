@@ -11,6 +11,99 @@ const {
 } = require('../services/domainService');
 
 /**
+ * GET /api/domains/check-landing-page
+ * Check if a domain has a landing page in the system
+ * Query params:
+ * - domain: Domain name to check (required)
+ * - userId: User ID (required for user-specific check)
+ */
+router.get('/check-landing-page', async (req, res) => {
+  console.log('\n🔍 Checking domain landing page...');
+  
+  try {
+    const { domain, userId } = req.query;
+
+    // Validation
+    if (!domain) {
+      return res.status(400).json({
+        success: false,
+        error: 'domain query parameter is required'
+      });
+    }
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId query parameter is required'
+      });
+    }
+
+    // Clean domain name
+    const cleanDomain = domain.toLowerCase().trim();
+    const userIdNum = parseInt(userId);
+
+    console.log(`   Domain: ${cleanDomain}`);
+    console.log(`   User ID: ${userIdNum}`);
+
+    // Query landing_pages table
+    const result = await query(
+      `SELECT 
+        id, 
+        landing_page_id, 
+        page_url, 
+        domain_name, 
+        page_title, 
+        is_active, 
+        created_at, 
+        updated_at
+       FROM landing_pages
+       WHERE domain_name = $1 AND user_id = $2 AND is_active = true
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [cleanDomain, userIdNum]
+    );
+
+    if (result.rows.length > 0) {
+      const landingPage = result.rows[0];
+      console.log(`✅ Landing page found: ${landingPage.page_url}`);
+
+      return res.json({
+        success: true,
+        exists: true,
+        data: {
+          id: landingPage.id,
+          landingPageId: landingPage.landing_page_id,
+          url: landingPage.page_url,
+          domain: landingPage.domain_name,
+          title: landingPage.page_title,
+          isActive: landingPage.is_active,
+          createdAt: landingPage.created_at,
+          updatedAt: landingPage.updated_at
+        },
+        message: `Landing page exists for ${cleanDomain}`
+      });
+    } else {
+      console.log(`❌ No landing page found for: ${cleanDomain}`);
+
+      return res.json({
+        success: true,
+        exists: false,
+        data: null,
+        message: `No landing page found for ${cleanDomain}`
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error checking domain landing page:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check domain landing page',
+      message: error.message
+    });
+  }
+});
+
+/**
  * POST /api/domains/check-lock-status
  * Check if a domain is locked for transfer via WHOIS lookup
  */
