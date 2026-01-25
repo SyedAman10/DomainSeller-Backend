@@ -3,10 +3,209 @@ const router = express.Router();
 const { query } = require('../config/database');
 const { sendBatchEmails } = require('../services/emailService');
 const { addLandingPageLink } = require('../services/emailTemplates');
+const OpenAI = require('openai');
+
+// Initialize OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 // ============================================================
 // SPECIFIC ROUTES (must come BEFORE parameterized routes)
 // ============================================================
+
+/**
+ * POST /api/campaigns/generate-ai-email
+ * Generate personalized AI email for a buyer using campaign settings
+ */
+router.post('/generate-ai-email', async (req, res) => {
+  console.log('\n🤖 AI EMAIL GENERATION REQUEST');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  
+  try {
+    const {
+      campaignId,
+      buyerInfo,
+      customInstructions
+    } = req.body;
+
+    // Validation
+    if (!campaignId) {
+      return res.status(400).json({
+        success: false,
+        error: 'campaignId is required'
+      });
+    }
+
+    if (!buyerInfo || !buyerInfo.email) {
+      return res.status(400).json({
+        success: false,
+        error: 'buyerInfo with email is required'
+      });
+    }
+
+    console.log(`📋 Campaign ID: ${campaignId}`);
+    console.log(`👤 Buyer: ${buyerInfo.company_name || buyerInfo.full_name || 'Unknown'}`);
+    console.log(`📧 Buyer Email: ${buyerInfo.email}`);
+
+    // Get campaign details
+    const campaignResult = await query(
+      `SELECT * FROM campaigns WHERE campaign_id = $1 OR id = $2`,
+      [campaignId, parseInt(campaignId) || 0]
+    );
+
+    if (campaignResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Campaign not found'
+      });
+    }
+
+    const campaign = campaignResult.rows[0];
+    console.log(`✅ Campaign found: ${campaign.campaign_name}`);
+    console.log(`🌐 Domain: ${campaign.domain_name}`);
+
+    // Get user details for signature
+    const userResult = await query(
+      `SELECT username, email FROM users WHERE id = $1`,
+      [campaign.user_id]
+    );
+
+    const seller = userResult.rows[0] || { username: 'Domain Owner', email: '' };
+
+    // Build AI prompt based on campaign settings and buyer info
+    const buyerName = buyerInfo.full_name || buyerInfo.first_name || buyerInfo.contact_person || 'there';
+    const companyName = buyerInfo.company_name || '';
+    const jobTitle = buyerInfo.job_title || buyerInfo.title || '';
+    const industry = buyerInfo.industry || '';
+    const buyerLocation = buyerInfo.city && buyerInfo.country 
+      ? `${buyerInfo.city}, ${buyerInfo.country}` 
+      : (buyerInfo.location || '');
+    const companyWebsite = buyerInfo.website || buyerInfo.company_domain || '';
+    const companyDescription = buyerInfo.description || '';
+    const employeeCount = buyerInfo.employee_count || buyerInfo.company_size || '';
+    const revenue = buyerInfo.revenue || buyerInfo.company_revenue_clean || '';
+    const seniority = buyerInfo.seniority || '';
+
+    // Create detailed context for AI
+    const systemPrompt = `You are an expert domain sales email writer. Generate a highly personalized, professional email to pitch the domain "${campaign.domain_name}" to a potential buyer.
+
+CAMPAIGN DETAILS:
+- Domain: ${campaign.domain_name}
+- Asking Price: ${campaign.asking_price ? `$${campaign.asking_price.toLocaleString()}` : 'Negotiable'}
+- Target Industry: ${campaign.target_industry || 'Any'}
+- Campaign Description: ${campaign.description || 'N/A'}
+- Landing Page: ${campaign.include_landing_page && campaign.landing_page_url ? campaign.landing_page_url : 'None'}
+
+BUYER INFORMATION:
+- Name: ${buyerName}
+- Company: ${companyName}
+- Job Title: ${jobTitle}
+- Seniority: ${seniority}
+- Industry: ${industry}
+- Location: ${buyerLocation}
+- Company Website: ${companyWebsite}
+- Company Description: ${companyDescription}
+- Employee Count: ${employeeCount}
+- Revenue: ${revenue}
+
+SELLER INFORMATION:
+- Name: ${seller.username}
+- Email: ${seller.email}
+
+EMAIL WRITING GUIDELINES:
+1. **Personalization is KEY**: Use the buyer's company name, industry, and job title to make it relevant
+2. **Hook**: Start with a compelling reason why THIS domain is perfect for THEIR specific business
+3. **Value Proposition**: Explain how the domain aligns with their industry and business goals
+4. **Brevity**: Keep it concise - 3-4 short paragraphs maximum
+5. **Professional tone**: Match the buyer's seniority level (more formal for C-suite, friendly for others)
+6. **No pushy sales**: Focus on value and fit, not aggressive selling
+7. **Clear CTA**: End with a simple question or call-to-action
+8. **Price handling**: Only mention price if buyer is C-suite/Owner, otherwise focus on value first
+9. **Landing page**: If available, naturally mention they can learn more at the landing page
+10. **Signature**: Always end with seller's name and email
+
+${customInstructions ? `\nADDITIONAL INSTRUCTIONS:\n${customInstructions}` : ''}
+
+Generate TWO versions of the email:
+1. HTML version (professionally formatted with proper HTML structure)
+2. Plain text version (clean, readable text)
+
+Return as JSON: { "subject": "...", "html": "...", "text": "..." }`;
+
+    console.log('🚀 Calling OpenAI API to generate personalized email...');
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt
+        },
+        {
+          role: 'user',
+          content: `Generate a highly personalized email for ${buyerName} at ${companyName || 'their company'} about the domain ${campaign.domain_name}. Make it feel like it was written specifically for them based on their company and role.`
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.8,
+      max_tokens: 2000
+    });
+
+    const aiResponse = JSON.parse(completion.choices[0].message.content);
+    console.log('✅ AI email generated successfully');
+    console.log(`📧 Subject: ${aiResponse.subject}`);
+
+    // Add landing page link if enabled
+    if (campaign.include_landing_page && campaign.landing_page_url) {
+      console.log(`🌐 Adding landing page link: ${campaign.landing_page_url}`);
+      aiResponse.html = addLandingPageLink(
+        aiResponse.html, 
+        campaign.landing_page_url, 
+        campaign.domain_name, 
+        'html'
+      );
+      aiResponse.text = addLandingPageLink(
+        aiResponse.text, 
+        campaign.landing_page_url, 
+        campaign.domain_name, 
+        'text'
+      );
+    }
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('✅ AI EMAIL GENERATION COMPLETE\n');
+
+    res.json({
+      success: true,
+      email: {
+        to: buyerInfo.email,
+        subject: aiResponse.subject,
+        html: aiResponse.html,
+        text: aiResponse.text
+      },
+      buyer: {
+        name: buyerName,
+        company: companyName,
+        email: buyerInfo.email
+      },
+      campaign: {
+        id: campaign.campaign_id,
+        name: campaign.campaign_name,
+        domain: campaign.domain_name
+      },
+      message: 'AI email generated successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error generating AI email:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate AI email',
+      message: error.message
+    });
+  }
+});
 
 /**
  * POST /api/campaigns/send-batch
