@@ -84,4 +84,3 @@ BEGIN
     ALTER TABLE campaigns ADD COLUMN manual_compose BOOLEAN DEFAULT FALSE;
   END IF;
 END $$;
-
