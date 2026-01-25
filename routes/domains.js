@@ -50,8 +50,7 @@ router.get('/check-landing-page', async (req, res) => {
       `SELECT 
         id, 
         url, 
-        domain_name, 
-        page_title, 
+        domain, 
         is_active, 
         created_at, 
         updated_at
@@ -72,8 +71,7 @@ router.get('/check-landing-page', async (req, res) => {
         data: {
           id: landingPage.id,
           url: landingPage.url,
-          domain: landingPage.domain_name,
-          title: landingPage.page_title,
+          domain: landingPage.domain,
           isActive: landingPage.is_active,
           createdAt: landingPage.created_at,
           updatedAt: landingPage.updated_at
