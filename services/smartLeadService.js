@@ -499,11 +499,25 @@ async function transformAndStoreLeads(items, metadata) {
           run_id,
           confidence_score,
           intent,
-          raw_data
+          raw_data,
+          first_name,
+          last_name,
+          full_name,
+          job_title,
+          seniority,
+          company_domain,
+          company_linkedin,
+          company_phone,
+          company_revenue_clean,
+          company_total_funding,
+          company_total_funding_clean,
+          company_technologies,
+          keywords
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
           $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-          $21, $22, $23, $24
+          $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+          $31, $32, $33, $34, $35, $36, $37
         )
         ON CONFLICT (email, website) 
         DO UPDATE SET
@@ -534,7 +548,20 @@ async function transformAndStoreLeads(items, metadata) {
         runId,
         lead.confidence_score || 50,
         lead.intent || 'WARM',
-        JSON.stringify(item)
+        JSON.stringify(item),
+        lead.first_name,
+        lead.last_name,
+        lead.full_name,
+        lead.job_title,
+        lead.seniority,
+        lead.company_domain,
+        lead.company_linkedin,
+        lead.company_phone,
+        lead.company_revenue_clean,
+        lead.company_total_funding,
+        lead.company_total_funding_clean,
+        lead.company_technologies,
+        lead.keywords
       ]);
 
       storedLeads.push(result.rows[0]);
@@ -589,9 +616,9 @@ function transformLeadData(item, actor) {
     snippet: item.headline || item.snippet || item.description?.substring(0, 500) || null,
     
     // Location
-    location: `${item.city || ''}${item.city && item.state ? ', ' : ''}${item.state || ''}`.trim() || item.location || item.address || null,
-    city: item.city || null,
-    country: item.country || null,
+    location: `${item.city || ''}${item.city && item.state ? ', ' : ''}${item.state || ''}`.trim() || item.company_full_address || item.location || item.address || null,
+    city: item.city || item.company_city || null,
+    country: item.country || item.company_country || null,
     
     // Social/LinkedIn
     linkedin_url: item.linkedin || item.linkedinUrl || item.linkedin_url || null,
@@ -600,7 +627,22 @@ function transformLeadData(item, actor) {
     
     // Scoring
     confidence_score: item.score || item.confidence || 70,
-    intent: item.seniority_level ? (item.seniority_level === 'owner' || item.seniority_level === 'c_suite' ? 'HOT' : 'WARM') : (item.intent || 'WARM')
+    intent: item.seniority_level ? (item.seniority_level === 'owner' || item.seniority_level === 'c_suite' ? 'HOT' : 'WARM') : (item.intent || 'WARM'),
+    
+    // NEW FIELDS from leads-finder actor
+    first_name: item.first_name || null,
+    last_name: item.last_name || null,
+    full_name: item.full_name || null,
+    job_title: item.job_title || null,
+    seniority: item.seniority_level || null,
+    company_domain: item.company_domain || null,
+    company_linkedin: item.company_linkedin || null,
+    company_phone: item.company_phone || null,
+    company_revenue_clean: item.company_annual_revenue_clean || null,
+    company_total_funding: item.company_total_funding || null,
+    company_total_funding_clean: item.company_total_funding_clean || null,
+    company_technologies: item.company_technologies || null,
+    keywords: item.keywords || null
   };
 
   return lead;
