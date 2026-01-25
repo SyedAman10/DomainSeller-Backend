@@ -378,15 +378,18 @@ function prepareActorInput(actor, options) {
 
   switch (actor) {
     case LEAD_ACTORS.LEADS_FINDER:
-      // Generic leads finder input format
+      // code_crafter/leads-finder expects fetch_count, not maxResults
       return {
-        query: keyword,
-        location: location || undefined,
-        industry: industry || undefined,
-        maxResults: count,
-        includeEmails: true,
-        includePhones: true,
-        includeSocialMedia: true
+        fetch_count: count,  // THIS is what controls the number of leads!
+        email_status: ['validated'],
+        // Optional filters can be added based on keyword/industry/location
+        ...(industry && { company_industry: [industry.toLowerCase()] }),
+        ...(location && { contact_location: [location.toLowerCase()] }),
+        // If keyword contains job titles, parse them
+        ...(keyword.toLowerCase().includes('ceo') || keyword.toLowerCase().includes('founder') 
+          ? { seniority_level: ['founder', 'c_suite'] } 
+          : {}
+        )
       };
 
     case LEAD_ACTORS.GOOGLE_MAPS:
