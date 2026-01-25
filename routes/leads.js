@@ -9,7 +9,7 @@ const router = express.Router();
 const { query } = require('../config/database');
 const { scrapeGoogleSERP, crawlURLForContacts, getScrapingSessionStatus, getRecentSessions } = require('../services/apifyService');
 const { classifyLeadsBatch, getClassificationStats, shouldCrawlLead, filterLowQualityLeads } = require('../services/leadClassificationService');
-const { generateLeads, searchCachedLeads, getLeadStats, LEAD_ACTORS } = require('../services/smartLeadService');
+const { generateLeads, searchCachedLeads, getLeadStats, matchLeadsForDomain, LEAD_ACTORS } = require('../services/smartLeadService');
 
 /**
  * POST /api/leads/collect
@@ -398,6 +398,70 @@ router.get('/stats', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch statistics',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/leads/match-domain
+ * Smart matching: Find leads interested in a specific domain
+ * Query params:
+ * - domain: Domain name to match (e.g., "fitness.com")
+ * - userId: User ID for filtering
+ * - limit: Max results (default: 20)
+ */
+router.get('/match-domain', async (req, res) => {
+  console.log('\n🎯 Smart Domain Matching Request');
+  
+  try {
+    const {
+      domain,
+      userId,
+      limit = 20
+    } = req.query;
+
+    // Validation
+    if (!domain) {
+      return res.status(400).json({
+        success: false,
+        error: 'domain query parameter is required'
+      });
+    }
+
+    const limitNum = Math.min(parseInt(limit) || 20, 100);
+    const userIdNum = userId ? parseInt(userId) : null;
+
+    console.log(`   Domain: "${domain}"`);
+    console.log(`   User ID: ${userIdNum || 'All users'}`);
+    console.log(`   Limit: ${limitNum}`);
+
+    // Call smart matching function
+    const matches = await matchLeadsForDomain({
+      domain,
+      userId: userIdNum,
+      limit: limitNum
+    });
+
+    console.log(`✅ Matched ${matches.length} leads for "${domain}"`);
+
+    res.json({
+      success: true,
+      data: {
+        domain,
+        matches,
+        count: matches.length,
+        message: matches.length > 0 
+          ? `Found ${matches.length} potential buyers for ${domain}` 
+          : `No potential buyers found for ${domain}. Try generating more leads first.`
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error matching domain:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to match leads for domain',
       message: error.message
     });
   }

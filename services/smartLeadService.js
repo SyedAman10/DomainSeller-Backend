@@ -738,11 +738,179 @@ async function getLeadStats(keyword = null) {
   }
 }
 
+/**
+ * Smart Domain-to-Lead Matching
+ * Analyzes a domain and finds the most relevant leads who would be interested
+ * @param {Object} options - Matching options
+ * @param {string} options.domain - Domain name to analyze (e.g., "fitness.com")
+ * @param {number} options.userId - User ID for filtering leads
+ * @param {number} options.limit - Maximum number of matches to return
+ * @returns {Promise<Array>} - Array of matched leads with confidence scores
+ */
+async function matchLeadsForDomain(options) {
+  const { domain, userId, limit = 20 } = options;
+
+  try {
+    console.log(`\n🎯 SMART DOMAIN MATCHING: "${domain}"`);
+    console.log(`   User ID: ${userId || 'All users'}`);
+    console.log(`   Limit: ${limit}`);
+
+    // Extract keywords from domain name
+    const domainKeywords = extractDomainKeywords(domain);
+    console.log(`   📝 Extracted Keywords: ${domainKeywords.join(', ')}`);
+
+    // Build search conditions
+    let whereConditions = [];
+    let params = [];
+    let paramIndex = 1;
+
+    // Filter by user if provided
+    if (userId) {
+      whereConditions.push(`user_id = $${paramIndex}`);
+      params.push(userId);
+      paramIndex++;
+    }
+
+    // Build fuzzy matching query for domain keywords
+    const keywordConditions = domainKeywords.map(() => {
+      const condition = `(
+        industry ILIKE $${paramIndex} OR 
+        keywords ILIKE $${paramIndex} OR 
+        company_name ILIKE $${paramIndex} OR 
+        description ILIKE $${paramIndex} OR
+        job_title ILIKE $${paramIndex} OR
+        title ILIKE $${paramIndex}
+      )`;
+      paramIndex++;
+      return condition;
+    });
+
+    whereConditions.push(`(${keywordConditions.join(' OR ')})`);
+
+    // Add keyword search params
+    domainKeywords.forEach(keyword => {
+      params.push(`%${keyword}%`);
+    });
+
+    params.push(limit);
+
+    const whereClause = whereConditions.length > 0 
+      ? `WHERE ${whereConditions.join(' AND ')}` 
+      : '';
+
+    // Simplified scoring without array operations
+    let scoreCalc = '';
+    domainKeywords.forEach((keyword, idx) => {
+      const searchTerm = `%${keyword}%`;
+      if (idx > 0) scoreCalc += ' + ';
+      scoreCalc += `
+        (CASE WHEN industry ILIKE '${searchTerm}' THEN 30 ELSE 0 END) +
+        (CASE WHEN keywords ILIKE '${searchTerm}' THEN 20 ELSE 0 END) +
+        (CASE WHEN company_name ILIKE '${searchTerm}' THEN 15 ELSE 0 END) +
+        (CASE WHEN description ILIKE '${searchTerm}' THEN 10 ELSE 0 END) +
+        (CASE WHEN job_title ILIKE '${searchTerm}' OR title ILIKE '${searchTerm}' THEN 5 ELSE 0 END)
+      `;
+    });
+
+    const matchQuery = `
+      SELECT 
+        id,
+        company_name,
+        email,
+        phone,
+        website,
+        location,
+        city,
+        country,
+        industry,
+        title,
+        snippet,
+        description,
+        linkedin_url,
+        contact_person,
+        employee_count,
+        revenue,
+        founded_year,
+        first_name,
+        last_name,
+        full_name,
+        job_title,
+        seniority,
+        company_domain,
+        company_linkedin,
+        company_phone,
+        company_revenue_clean,
+        company_total_funding_clean,
+        company_technologies,
+        keywords,
+        created_at,
+        (
+          ${scoreCalc} +
+          (CASE WHEN seniority IN ('owner', 'c_suite', 'vp') THEN 20 ELSE 0 END)
+        ) as confidence_score
+      FROM generated_leads
+      ${whereClause}
+      HAVING (${scoreCalc} + (CASE WHEN seniority IN ('owner', 'c_suite', 'vp') THEN 20 ELSE 0 END)) > 0
+      ORDER BY confidence_score DESC, created_at DESC
+      LIMIT $${params.length}
+    `;
+
+    console.log(`\n🔍 Executing matching query...`);
+    const result = await query(matchQuery, params);
+
+    const matches = result.rows;
+
+    console.log(`\n✅ Found ${matches.length} matching leads`);
+    if (matches.length > 0) {
+      console.log(`   🏆 Top match: ${matches[0].company_name} (Score: ${matches[0].confidence_score})`);
+      console.log(`      📧 ${matches[0].email}`);
+      console.log(`      💼 ${matches[0].job_title || matches[0].title}`);
+    }
+
+    return matches;
+
+  } catch (error) {
+    console.error('❌ Error matching leads for domain:', error);
+    throw error;
+  }
+}
+
+/**
+ * Extract meaningful keywords from a domain name
+ * @param {string} domain - Domain name (e.g., "fitness.com", "startup-ai.io")
+ * @returns {Array<string>} - Array of keywords
+ */
+function extractDomainKeywords(domain) {
+  // Remove TLD (.com, .io, .ai, etc.)
+  const domainWithoutTld = domain.replace(/\.(com|net|org|io|ai|co|app|tech|dev|cloud|xyz|info|biz)$/i, '');
+  
+  // Split by common separators
+  const parts = domainWithoutTld.split(/[-_]/);
+  
+  // Add full domain name without TLD as a keyword
+  const keywords = [domainWithoutTld];
+  
+  // Add individual parts if split occurred
+  if (parts.length > 1) {
+    keywords.push(...parts);
+  }
+  
+  // Filter out common words and short strings
+  const filtered = keywords.filter(k => 
+    k.length > 2 && 
+    !['www', 'the', 'and', 'for', 'app'].includes(k.toLowerCase())
+  );
+  
+  // Convert to lowercase and remove duplicates
+  return [...new Set(filtered.map(k => k.toLowerCase()))];
+}
+
 module.exports = {
   generateLeads,
   searchCachedLeads,
   scrapeLeads,
   getLeadStats,
+  matchLeadsForDomain,
   LEAD_ACTORS
 };
 
