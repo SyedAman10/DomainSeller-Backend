@@ -382,13 +382,17 @@ function prepareActorInput(actor, options) {
       return {
         fetch_count: count,  // THIS is what controls the number of leads!
         email_status: ['validated'],
-        // Optional filters can be added based on keyword/industry/location
-        ...(industry && { company_industry: [industry.toLowerCase()] }),
-        ...(location && { contact_location: [location.toLowerCase()] }),
-        // If keyword contains job titles, parse them
+        // Note: location filtering removed - actor has very strict location format requirements
+        // Users can filter leads by location after receiving results
+        // If keyword contains job titles or seniority, add filters
         ...(keyword.toLowerCase().includes('ceo') || keyword.toLowerCase().includes('founder') 
           ? { seniority_level: ['founder', 'c_suite'] } 
           : {}
+        ),
+        // If keyword contains specific industries, add filters
+        ...(keyword.toLowerCase().includes('tech') || keyword.toLowerCase().includes('technology')
+          ? { company_industry: ['technology'] }
+          : industry && { company_industry: [industry.toLowerCase()] }
         )
       };
 
