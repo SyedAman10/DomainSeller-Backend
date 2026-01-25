@@ -49,7 +49,6 @@ router.get('/check-landing-page', async (req, res) => {
     const result = await query(
       `SELECT 
         id, 
-        landing_page_id, 
         page_url, 
         domain_name, 
         page_title, 
@@ -72,7 +71,6 @@ router.get('/check-landing-page', async (req, res) => {
         exists: true,
         data: {
           id: landingPage.id,
-          landingPageId: landingPage.landing_page_id,
           url: landingPage.page_url,
           domain: landingPage.domain_name,
           title: landingPage.page_title,
