@@ -575,7 +575,8 @@ async function transformAndStoreLeads(items, metadata) {
         ON CONFLICT (email, website) 
         DO UPDATE SET
           updated_at = NOW(),
-          query_used = EXCLUDED.query_used
+          query_used = EXCLUDED.query_used,
+          user_id = EXCLUDED.user_id
         RETURNING *
       `, [
         lead.company_name,
