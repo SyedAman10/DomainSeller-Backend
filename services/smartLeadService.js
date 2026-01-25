@@ -739,66 +739,40 @@ async function getLeadStats(keyword = null) {
 }
 
 /**
- * Smart Domain-to-Lead Matching
- * Analyzes a domain and finds the most relevant leads who would be interested
+ * Smart Domain-to-Lead Matching with Interest Categorization
+ * Analyzes a domain and categorizes ALL leads into high/low interest
+ * NEVER returns 0 leads - always shows something to the user
+ * 
  * @param {Object} options - Matching options
  * @param {string} options.domain - Domain name to analyze (e.g., "fitness.com")
  * @param {number} options.userId - User ID for filtering leads
- * @param {number} options.limit - Maximum number of matches to return
- * @returns {Promise<Array>} - Array of matched leads with confidence scores
+ * @param {number} options.limitHigh - Max high interest results (default: 20)
+ * @param {number} options.limitLow - Max low interest results (default: 50)
+ * @returns {Promise<Object>} - Object with highInterest and lowInterest arrays
  */
 async function matchLeadsForDomain(options) {
-  const { domain, userId, limit = 20 } = options;
+  const { domain, userId, limitHigh = 20, limitLow = 50 } = options;
 
   try {
     console.log(`\n🎯 SMART DOMAIN MATCHING: "${domain}"`);
     console.log(`   User ID: ${userId || 'All users'}`);
-    console.log(`   Limit: ${limit}`);
+    console.log(`   High Interest Limit: ${limitHigh}`);
+    console.log(`   Low Interest Limit: ${limitLow}`);
 
     // Extract keywords from domain name
     const domainKeywords = extractDomainKeywords(domain);
     console.log(`   📝 Extracted Keywords: ${domainKeywords.join(', ')}`);
 
-    // Build search conditions
-    let whereConditions = [];
+    // Build WHERE clause for user filtering
+    let whereClause = '';
     let params = [];
-    let paramIndex = 1;
-
-    // Filter by user if provided
+    
     if (userId) {
-      whereConditions.push(`user_id = $${paramIndex}`);
+      whereClause = 'WHERE user_id = $1';
       params.push(userId);
-      paramIndex++;
     }
 
-    // Build fuzzy matching query for domain keywords
-    const keywordConditions = domainKeywords.map(() => {
-      const condition = `(
-        industry ILIKE $${paramIndex} OR 
-        keywords ILIKE $${paramIndex} OR 
-        company_name ILIKE $${paramIndex} OR 
-        description ILIKE $${paramIndex} OR
-        job_title ILIKE $${paramIndex} OR
-        title ILIKE $${paramIndex}
-      )`;
-      paramIndex++;
-      return condition;
-    });
-
-    whereConditions.push(`(${keywordConditions.join(' OR ')})`);
-
-    // Add keyword search params
-    domainKeywords.forEach(keyword => {
-      params.push(`%${keyword}%`);
-    });
-
-    params.push(limit);
-
-    const whereClause = whereConditions.length > 0 
-      ? `WHERE ${whereConditions.join(' AND ')}` 
-      : '';
-
-    // Simplified scoring without array operations
+    // Build scoring calculation
     let scoreCalc = '';
     domainKeywords.forEach((keyword, idx) => {
       const searchTerm = `%${keyword}%`;
@@ -812,7 +786,8 @@ async function matchLeadsForDomain(options) {
       `;
     });
 
-    const matchQuery = `
+    // Query to get ALL leads with calculated scores
+    const allLeadsQuery = `
       SELECT 
         id,
         company_name,
@@ -850,24 +825,50 @@ async function matchLeadsForDomain(options) {
         ) as confidence_score
       FROM generated_leads
       ${whereClause}
-      HAVING (${scoreCalc} + (CASE WHEN seniority IN ('owner', 'c_suite', 'vp') THEN 20 ELSE 0 END)) > 0
       ORDER BY confidence_score DESC, created_at DESC
-      LIMIT $${params.length}
     `;
 
-    console.log(`\n🔍 Executing matching query...`);
-    const result = await query(matchQuery, params);
+    console.log(`\n🔍 Fetching all user leads with relevance scoring...`);
+    const result = await query(allLeadsQuery, params);
+    const allLeads = result.rows;
 
-    const matches = result.rows;
+    console.log(`   📊 Total leads found: ${allLeads.length}`);
 
-    console.log(`\n✅ Found ${matches.length} matching leads`);
-    if (matches.length > 0) {
-      console.log(`   🏆 Top match: ${matches[0].company_name} (Score: ${matches[0].confidence_score})`);
-      console.log(`      📧 ${matches[0].email}`);
-      console.log(`      💼 ${matches[0].job_title || matches[0].title}`);
+    // Categorize leads
+    const HIGH_INTEREST_THRESHOLD = 40; // Score of 40+ = High Interest
+    
+    const highInterest = allLeads
+      .filter(lead => lead.confidence_score >= HIGH_INTEREST_THRESHOLD)
+      .slice(0, limitHigh);
+    
+    const lowInterest = allLeads
+      .filter(lead => lead.confidence_score < HIGH_INTEREST_THRESHOLD)
+      .slice(0, limitLow);
+
+    console.log(`\n📊 CATEGORIZATION RESULTS:`);
+    console.log(`   🔥 High Interest: ${highInterest.length} leads (score ≥ ${HIGH_INTEREST_THRESHOLD})`);
+    console.log(`   📋 Low Interest: ${lowInterest.length} leads (score < ${HIGH_INTEREST_THRESHOLD})`);
+    
+    if (highInterest.length > 0) {
+      console.log(`   🏆 Top High Interest: ${highInterest[0].company_name} (Score: ${highInterest[0].confidence_score})`);
+      console.log(`      📧 ${highInterest[0].email}`);
+      console.log(`      💼 ${highInterest[0].job_title || highInterest[0].title}`);
     }
 
-    return matches;
+    if (lowInterest.length > 0) {
+      console.log(`   📌 Top Low Interest: ${lowInterest[0].company_name} (Score: ${lowInterest[0].confidence_score})`);
+    }
+
+    return {
+      highInterest,
+      lowInterest,
+      total: allLeads.length,
+      stats: {
+        highInterestCount: highInterest.length,
+        lowInterestCount: lowInterest.length,
+        threshold: HIGH_INTEREST_THRESHOLD
+      }
+    };
 
   } catch (error) {
     console.error('❌ Error matching leads for domain:', error);

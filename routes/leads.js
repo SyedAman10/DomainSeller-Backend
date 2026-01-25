@@ -405,11 +405,14 @@ router.get('/stats', async (req, res) => {
 
 /**
  * GET /api/leads/match-domain
- * Smart matching: Find leads interested in a specific domain
+ * Smart matching: Categorize ALL leads into high/low interest for a domain
+ * NEVER returns 0 leads - always shows something
+ * 
  * Query params:
  * - domain: Domain name to match (e.g., "fitness.com")
- * - userId: User ID for filtering
- * - limit: Max results (default: 20)
+ * - userId: User ID for filtering (required)
+ * - limitHigh: Max high interest results (default: 20)
+ * - limitLow: Max low interest results (default: 50)
  */
 router.get('/match-domain', async (req, res) => {
   console.log('\n🎯 Smart Domain Matching Request');
@@ -418,7 +421,8 @@ router.get('/match-domain', async (req, res) => {
     const {
       domain,
       userId,
-      limit = 20
+      limitHigh = 20,
+      limitLow = 50
     } = req.query;
 
     // Validation
@@ -429,31 +433,56 @@ router.get('/match-domain', async (req, res) => {
       });
     }
 
-    const limitNum = Math.min(parseInt(limit) || 20, 100);
-    const userIdNum = userId ? parseInt(userId) : null;
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId query parameter is required'
+      });
+    }
+
+    const limitHighNum = Math.min(parseInt(limitHigh) || 20, 100);
+    const limitLowNum = Math.min(parseInt(limitLow) || 50, 200);
+    const userIdNum = parseInt(userId);
 
     console.log(`   Domain: "${domain}"`);
-    console.log(`   User ID: ${userIdNum || 'All users'}`);
-    console.log(`   Limit: ${limitNum}`);
+    console.log(`   User ID: ${userIdNum}`);
+    console.log(`   High Interest Limit: ${limitHighNum}`);
+    console.log(`   Low Interest Limit: ${limitLowNum}`);
 
     // Call smart matching function
-    const matches = await matchLeadsForDomain({
+    const result = await matchLeadsForDomain({
       domain,
       userId: userIdNum,
-      limit: limitNum
+      limitHigh: limitHighNum,
+      limitLow: limitLowNum
     });
 
-    console.log(`✅ Matched ${matches.length} leads for "${domain}"`);
+    const { highInterest, lowInterest, total, stats } = result;
+
+    console.log(`✅ Categorized ${total} leads for "${domain}"`);
+    console.log(`   🔥 High Interest: ${highInterest.length}`);
+    console.log(`   📋 Low Interest: ${lowInterest.length}`);
+
+    // Build helpful message
+    let message;
+    if (highInterest.length > 0 && lowInterest.length > 0) {
+      message = `Found ${highInterest.length} high-interest buyers and ${lowInterest.length} potential buyers for ${domain}`;
+    } else if (highInterest.length > 0) {
+      message = `Found ${highInterest.length} high-interest buyers for ${domain}`;
+    } else if (lowInterest.length > 0) {
+      message = `Found ${lowInterest.length} potential buyers for ${domain} (no perfect matches, but these leads might be interested)`;
+    } else {
+      message = `No leads available yet. Generate some leads first to see potential buyers for ${domain}`;
+    }
 
     res.json({
       success: true,
       data: {
         domain,
-        matches,
-        count: matches.length,
-        message: matches.length > 0 
-          ? `Found ${matches.length} potential buyers for ${domain}` 
-          : `No potential buyers found for ${domain}. Try generating more leads first.`
+        highInterest,
+        lowInterest,
+        stats,
+        message
       }
     });
 
