@@ -550,28 +550,40 @@ async function transformAndStoreLeads(items, metadata) {
  */
 function transformLeadData(item, actor) {
   // This function normalizes different actor outputs to a standard format
+  // The code_crafter/leads-finder actor returns: company_name, linkedin, company_size, etc.
   
   const lead = {
-    company_name: item.companyName || item.name || item.title || item.businessName || null,
+    // Company information
+    company_name: item.company_name || item.companyName || item.name || item.businessName || null,
+    website: item.company_website || item.website || item.url || item.websiteUrl || item.company_domain || null,
+    industry: item.industry || item.category || null,
+    employee_count: item.company_size || item.employeeCount || item.employees || null,
+    revenue: item.company_annual_revenue || item.revenue || item.annualRevenue || null,
+    founded_year: item.company_founded_year || item.foundedYear || item.yearFounded || null,
+    description: item.company_description || item.description || item.about || null,
+    
+    // Contact information
     email: item.email || item.contactEmail || item.mail || null,
-    phone: item.phone || item.phoneNumber || item.telephone || null,
-    website: item.website || item.url || item.websiteUrl || null,
-    location: item.location || item.address || null,
+    phone: item.mobile_number || item.company_phone || item.phone || item.phoneNumber || item.telephone || null,
+    contact_person: item.full_name || item.first_name || item.last_name || item.contactPerson || item.owner || item.manager || null,
+    
+    // Job/Position information  
+    title: item.job_title || item.title || item.headline || null,
+    snippet: item.headline || item.snippet || item.description?.substring(0, 500) || null,
+    
+    // Location
+    location: `${item.city || ''}${item.city && item.state ? ', ' : ''}${item.state || ''}`.trim() || item.location || item.address || null,
     city: item.city || null,
     country: item.country || null,
-    industry: item.industry || item.category || null,
-    title: item.title || item.name || null,
-    snippet: item.snippet || item.description?.substring(0, 500) || null,
-    description: item.description || item.about || null,
-    linkedin_url: item.linkedinUrl || item.linkedin || null,
+    
+    // Social/LinkedIn
+    linkedin_url: item.linkedin || item.linkedinUrl || item.linkedin_url || null,
     facebook_url: item.facebookUrl || item.facebook || null,
     twitter_url: item.twitterUrl || item.twitter || null,
-    contact_person: item.contactPerson || item.owner || item.manager || null,
-    employee_count: item.employeeCount || item.employees || null,
-    revenue: item.revenue || item.annualRevenue || null,
-    founded_year: item.foundedYear || item.yearFounded || null,
-    confidence_score: item.score || item.confidence || 50,
-    intent: item.intent || 'WARM'
+    
+    // Scoring
+    confidence_score: item.score || item.confidence || 70,
+    intent: item.seniority_level ? (item.seniority_level === 'owner' || item.seniority_level === 'c_suite' ? 'HOT' : 'WARM') : (item.intent || 'WARM')
   };
 
   return lead;
