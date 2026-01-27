@@ -52,11 +52,16 @@ const requireAuth = (req, res, next) => {
     
     if (authHeader) {
       // Extract token from "Bearer <token>" format
-      const token = authHeader.startsWith('Bearer ') 
-        ? authHeader.slice(7) 
-        : authHeader;
+      let token = authHeader;
+      
+      // Remove "Bearer " prefix (case-insensitive)
+      if (token.toLowerCase().startsWith('bearer ')) {
+        token = token.substring(7).trim();
+      }
+      
+      console.log('🔍 Extracted token (first 50 chars):', token.substring(0, 50) + '...');
 
-      if (token) {
+      if (token && token !== 'Bearer') {
         // Try JWT verification if JWT_SECRET is available
         if (process.env.JWT_SECRET) {
           try {
