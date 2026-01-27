@@ -451,20 +451,20 @@ async function notifyAutoResponse({
       approvalHTML = priceNegotiationHTML;
     } else {
       // Regular payment approval (buyer wants to pay asking price)
-      approvalHTML = `
-        <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:2px solid #f59e0b;padding:25px;border-radius:12px;margin:25px 0;">
-          <h3 style="margin:0 0 15px 0;color:#92400e;font-size:20px;">🎯 STRIPE PAYMENT APPROVAL REQUIRED</h3>
-          <div style="background:white;padding:20px;border-radius:8px;margin:15px 0;">
-            <p style="margin:0 0 10px 0;color:#334155;"><strong>💰 Amount:</strong> $${askingPrice} USD</p>
-            <p style="margin:0 0 10px 0;color:#334155;"><strong>👤 Buyer:</strong> ${buyerName} (${buyerEmail})</p>
-            <p style="margin:0 0 10px 0;color:#334155;"><strong>🌐 Domain:</strong> ${domainName}</p>
-            <p style="margin:0;color:#334155;"><strong>📋 Status:</strong> <span style="color:#f59e0b;font-weight:600;">Pending Your Approval</span></p>
-          </div>
-          <div style="text-align:center;margin:30px 0;">
+    approvalHTML = `
+      <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:2px solid #f59e0b;padding:25px;border-radius:12px;margin:25px 0;">
+        <h3 style="margin:0 0 15px 0;color:#92400e;font-size:20px;">🎯 STRIPE PAYMENT APPROVAL REQUIRED</h3>
+        <div style="background:white;padding:20px;border-radius:8px;margin:15px 0;">
+          <p style="margin:0 0 10px 0;color:#334155;"><strong>💰 Amount:</strong> $${askingPrice} USD</p>
+          <p style="margin:0 0 10px 0;color:#334155;"><strong>👤 Buyer:</strong> ${buyerName} (${buyerEmail})</p>
+          <p style="margin:0 0 10px 0;color:#334155;"><strong>🌐 Domain:</strong> ${domainName}</p>
+          <p style="margin:0;color:#334155;"><strong>📋 Status:</strong> <span style="color:#f59e0b;font-weight:600;">Pending Your Approval</span></p>
+        </div>
+        <div style="text-align:center;margin:30px 0;">
             <a href="${apiUrl}/backend/stripe/approvals/${approvalId}/approve" 
-               style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);margin:10px;">
-              ✅ APPROVE & SEND PAYMENT LINK
-            </a>
+             style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);margin:10px;">
+            ✅ APPROVE & SEND PAYMENT LINK
+          </a>
             <a href="${apiUrl}/backend/stripe/approvals/${approvalId}/decline" 
                style="display:inline-block;padding:16px 40px;background:#dc2626;color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(220,38,38,0.3);margin:10px;">
               ❌ DECLINE REQUEST

@@ -23,7 +23,16 @@ const adminRoutes = require('./routes/admin');
 const buyerRoutes = require('./routes/buyer');
 const salesRoutes = require('./routes/sales');
 const aiAgentRoutes = require('./routes/aiAgent');
-const registrarRoutes = require('./routes/registrar');
+
+// Try to load registrar routes - may fail if dependencies are missing
+let registrarRoutes = null;
+try {
+  registrarRoutes = require('./routes/registrar');
+  console.log('✅ Registrar routes loaded successfully');
+} catch (error) {
+  console.error('⚠️  Failed to load registrar routes:', error.message);
+  console.error('   Registrar integration will not be available');
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -174,7 +183,12 @@ app.use('/backend/admin', adminRoutes);
 app.use('/backend/buyer', buyerRoutes);
 app.use('/backend/sales', salesRoutes);
 app.use('/backend/ai-agent', aiAgentRoutes);
-app.use('/backend/registrar', registrarRoutes);
+
+// Only register registrar routes if they loaded successfully
+if (registrarRoutes) {
+  app.use('/backend/registrar', registrarRoutes);
+  console.log('✅ Registrar routes registered at /backend/registrar');
+}
 
 // Buyer routes without prefix (for email links)
 app.use('/buyer', buyerRoutes);
@@ -240,9 +254,16 @@ const startServer = async () => {
     startEmailQueue();
     console.log('✅ Email queue processor started');
 
-    // Start registrar sync scheduler
-    const { syncScheduler } = require('./services/syncScheduler');
-    syncScheduler.start();
+    // Start registrar sync scheduler (optional - won't break server if it fails)
+    try {
+      const { syncScheduler } = require('./services/syncScheduler');
+      syncScheduler.start();
+      console.log('✅ Registrar sync scheduler started');
+    } catch (schedError) {
+      console.error('⚠️  Failed to start registrar sync scheduler:', schedError.message);
+      console.error('   Automatic domain sync will not be available');
+      console.error('   You can still use manual sync via API');
+    }
 
     // Start listening
     app.listen(PORT,"127.0.0.1" , () => {

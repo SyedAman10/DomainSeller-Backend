@@ -1,18 +1,67 @@
-# CORS Troubleshooting Guide
+# CORS & Server Troubleshooting Guide
 
-## 🔍 Issue: CORS Blocked - No 'Access-Control-Allow-Origin' Header
+## 🚨 Issue: CORS Errors from Frontend
 
-This error appears when the backend server either:
-1. Isn't running
-2. Crashed during startup
-3. Not responding to requests
-4. CORS not properly configured
+### Error Messages
+```
+Access to fetch at 'https://api.3vltn.com/backend/registrar/supported' 
+from origin 'https://3vltn.com' has been blocked by CORS policy
+```
 
----
+## ✅ Fixes Applied
 
-## ✅ Quick Fix Steps
+### 1. Added `X-User-Id` to Allowed Headers
 
-### Step 1: Restart the Backend
+The authentication middleware uses `X-User-Id` header, so it must be allowed in CORS:
+
+```javascript
+allowedHeaders: [
+  'Content-Type', 
+  'Authorization', 
+  'X-Requested-With', 
+  'Accept', 
+  'Origin', 
+  'X-User-Id'  // ← Added
+]
+```
+
+### 2. Made Registrar Routes Optional
+
+If registrar integration fails to load, the server will still start:
+
+```javascript
+// Routes load with error handling
+let registrarRoutes = null;
+try {
+  registrarRoutes = require('./routes/registrar');
+  console.log('✅ Registrar routes loaded successfully');
+} catch (error) {
+  console.error('⚠️  Failed to load registrar routes:', error.message);
+}
+
+// Only register if loaded successfully
+if (registrarRoutes) {
+  app.use('/backend/registrar', registrarRoutes);
+}
+```
+
+### 3. Made Sync Scheduler Optional
+
+Same for the background sync scheduler - won't crash the server:
+
+```javascript
+try {
+  const { syncScheduler } = require('./services/syncScheduler');
+  syncScheduler.start();
+} catch (error) {
+  console.error('⚠️  Sync scheduler failed to start');
+  // Server continues running
+}
+```
+
+## 🔧 How to Fix
+
+### Step 1: Restart the Backend Server
 
 ```bash
 pm2 restart node-backend
@@ -24,286 +73,161 @@ pm2 restart node-backend
 pm2 logs node-backend --lines 100
 ```
 
-**Look for these SUCCESS indicators:**
+Look for these messages:
+
+✅ **Success:**
 ```
-✅ Database connected
-✅ Email queue processor started
-✅ REGISTRAR SYNC SCHEDULER ACTIVE
+✅ Registrar routes loaded successfully
+✅ Registrar routes registered at /backend/registrar
+✅ Registrar sync scheduler started
 🚀 Campaign Backend Server Running
-📡 Port: 3000
 ```
 
-**Look for these ERROR indicators:**
+⚠️ **Warning (but server still works):**
 ```
-❌ Error: Cannot find module...
-❌ Database connection failed
-❌ EADDRINUSE (port already in use)
+⚠️  Failed to load registrar routes: [error message]
+   Registrar integration will not be available
+🚀 Campaign Backend Server Running
 ```
 
-### Step 3: Test Server is Responding
+### Step 3: Test CORS
 
 ```bash
-# Test health endpoint
-curl https://api.3vltn.com/backend/health
-
-# Expected response:
-# {"status":"OK","message":"Campaign Backend is running"}
-```
-
-### Step 4: Test CORS Headers
-
-```bash
-# Test OPTIONS preflight
+# Test from command line
 curl -X OPTIONS https://api.3vltn.com/backend/registrar/supported \
   -H "Origin: https://3vltn.com" \
   -H "Access-Control-Request-Method: GET" \
-  -H "Access-Control-Request-Headers: Content-Type, X-User-Id" \
   -v
 ```
 
-**Look for these headers in response:**
+Look for these headers in response:
 ```
 < Access-Control-Allow-Origin: https://3vltn.com
 < Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH
-< Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept, Origin, X-User-Id
-< Access-Control-Allow-Credentials: true
+< Access-Control-Allow-Headers: Content-Type, Authorization, ...
 ```
 
----
+### Step 4: Test Registrar API
 
-## 🐛 Common Issues & Fixes
-
-### Issue 1: Server Crashed on Startup
-
-**Symptoms:**
-- PM2 shows "errored" or keeps restarting
-- CORS errors in browser
-
-**Fix:**
 ```bash
-# Check logs for error
-pm2 logs node-backend --err --lines 50
-
-# Common errors and fixes:
-# - "Cannot find module": Missing dependency
-npm install
-
-# - "ENCRYPTION_KEY not set": Missing env variable
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# Add output to .env as ENCRYPTION_KEY=<key>
-
-# - "Database connection failed": Database issue
-# Check DATABASE_URL in .env
-
-# Restart after fixing
-pm2 restart node-backend
-```
-
-### Issue 2: Port Already in Use
-
-**Symptoms:**
-- `Error: listen EADDRINUSE :::3000`
-
-**Fix:**
-```bash
-# Find process using port 3000
-lsof -i :3000
-
-# Kill it
-kill -9 <PID>
-
-# Or restart with PM2
-pm2 delete node-backend
-pm2 start server.js --name node-backend
-```
-
-### Issue 3: Frontend Using Wrong URL
-
-**Symptoms:**
-- CORS errors even when server is running
-- Requests going to wrong domain
-
-**Fix:**
-Check your frontend environment variables:
-```env
-# Should be:
-NEXT_PUBLIC_API_URL=https://api.3vltn.com
-# NOT:
-NEXT_PUBLIC_API_URL=https://3vltn.com
-```
-
-### Issue 4: Nginx Not Proxying Correctly
-
-**Symptoms:**
-- Server responds to `curl` but not browser
-- 502 Bad Gateway errors
-
-**Fix:**
-Check Nginx configuration:
-```bash
-# Edit Nginx config
-sudo nano /etc/nginx/sites-available/api.3vltn.com
-
-# Should have:
-location /backend {
-    proxy_pass http://localhost:3000;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_cache_bypass $http_upgrade;
-}
-
-# Test config
-sudo nginx -t
-
-# Reload Nginx
-sudo systemctl reload nginx
-```
-
----
-
-## 🧪 Test Suite
-
-### Test 1: Health Check
-```bash
-curl https://api.3vltn.com/backend/health
-# Expected: {"status":"OK",...}
-```
-
-### Test 2: Public Endpoint (No Auth)
-```bash
+# Test without auth (public endpoint)
 curl https://api.3vltn.com/backend/registrar/supported
-# Expected: {"success":true,"registrars":[...]}
+
+# Expected response:
+# {"success":true,"registrars":[...]}
 ```
 
-### Test 3: Protected Endpoint (With Auth)
-```bash
-curl https://api.3vltn.com/backend/registrar/accounts \
-  -H "X-User-Id: 10"
-# Expected: {"success":true,"accounts":[...]}
-```
+## 🐛 Common Issues
 
-### Test 4: OPTIONS Preflight
-```bash
-curl -X OPTIONS https://api.3vltn.com/backend/registrar/supported \
-  -H "Origin: https://3vltn.com" \
-  -H "Access-Control-Request-Method: GET" \
-  -v
-# Expected: HTTP 204 with CORS headers
-```
+### Issue 1: Routes Not Loading
 
----
+**Symptoms:**
+- `Cannot find module` errors in logs
+- `net::ERR_FAILED` in browser
 
-## 📋 Checklist
+**Solutions:**
+1. Check if all dependencies are installed: `npm install`
+2. Check if migration was run: `npm run migrate:registrar`
+3. Check if `.env` has `ENCRYPTION_KEY`
 
-- [ ] Backend server is running (`pm2 status`)
-- [ ] No errors in logs (`pm2 logs`)
-- [ ] Health endpoint responds (`curl /backend/health`)
-- [ ] CORS headers present in OPTIONS response
-- [ ] Nginx is running and configured correctly
-- [ ] SSL certificates are valid
-- [ ] Firewall allows port 3000 (or proxy port)
-- [ ] Environment variables are set correctly
+### Issue 2: CORS Still Blocked
 
----
+**Symptoms:**
+- CORS errors persist after restart
+- `No 'Access-Control-Allow-Origin' header` error
 
-## 🔐 CORS Configuration
+**Solutions:**
+1. Clear browser cache
+2. Check nginx configuration (if using nginx)
+3. Verify `allowedOrigins` includes your frontend domain
+4. Check if server is actually responding: `curl https://api.3vltn.com/backend/health`
 
-Your backend is configured to allow these origins:
+### Issue 3: Server Won't Start
 
-```javascript
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'http://localhost:5000',
-  'https://3vltn.com',          // ✅ Your frontend
-  'http://3vltn.com',
-  'https://www.3vltn.com',
-  'http://www.3vltn.com',
-  'https://api.3vltn.com',
-  'http://api.3vltn.com',
-  'https://3-vltn-dashboard.vercel.app'
-];
-```
+**Symptoms:**
+- PM2 shows `errored` status
+- Server exits immediately
 
-**Allowed headers:**
-- Content-Type
-- Authorization
-- X-Requested-With
-- Accept
-- Origin
-- X-User-Id (for auth)
+**Solutions:**
+1. Check PM2 logs: `pm2 logs node-backend`
+2. Try running directly: `cd DomainSeller-Backend && node server.js`
+3. Check `.env` file exists and has required variables
+4. Check database connection
 
-**Allowed methods:**
-- GET
-- POST
-- PUT
-- DELETE
-- OPTIONS
-- PATCH
+## 📋 Required Environment Variables
 
----
-
-## 🚨 Emergency Debug
-
-If nothing works, enable verbose logging:
+Make sure these are in your `.env`:
 
 ```bash
-# Add to .env
-DEBUG=*
-NODE_ENV=development
+# Required for basic operation
+DATABASE_URL=postgresql://...
+PORT=3000
 
-# Restart
+# Required for registrar integration
+ENCRYPTION_KEY=<32+ character random string>
+
+# Optional but recommended
+BACKEND_URL=https://api.3vltn.com
+FRONTEND_URL=https://3vltn.com
+```
+
+## 🔐 Generate Encryption Key
+
+If you haven't generated `ENCRYPTION_KEY` yet:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Add output to `.env`:
+```bash
+ENCRYPTION_KEY=<generated_key_here>
+```
+
+## 🧪 Test Sequence
+
+Run these commands in order:
+
+```bash
+# 1. Check if encryption key exists
+cd DomainSeller-Backend
+grep ENCRYPTION_KEY .env
+
+# 2. Run migration (if not done yet)
+npm run migrate:registrar
+
+# 3. Test registrar integration
+npm run test:registrar
+
+# 4. Restart server
 pm2 restart node-backend
 
-# Watch logs in real-time
-pm2 logs node-backend --raw
+# 5. Check logs
+pm2 logs node-backend --lines 50
+
+# 6. Test API
+curl https://api.3vltn.com/backend/registrar/supported
 ```
-
-Then make a request from frontend and watch the logs.
-
----
 
 ## 📞 Still Having Issues?
 
-1. **Check PM2 status**: `pm2 status`
-2. **View full logs**: `pm2 logs node-backend --lines 200`
-3. **Test health endpoint**: `curl https://api.3vltn.com/backend/health`
-4. **Check Nginx error logs**: `sudo tail -f /var/log/nginx/error.log`
-5. **Check system logs**: `sudo journalctl -u nginx -n 100`
+If the server still won't start or CORS errors persist:
 
----
+1. **Check server logs** for specific error messages
+2. **Run the test script**: `npm run test:registrar`
+3. **Try starting server directly**: `node server.js` (to see all errors)
+4. **Check nginx configuration** (if using reverse proxy)
+5. **Verify DNS** points to correct server
 
 ## ✅ Success Indicators
 
-When everything is working, you should see:
+You'll know it's working when:
 
-**In browser console:**
-```
-✅ No CORS errors
-✅ API requests succeeding
-✅ 200 OK responses
-```
-
-**In PM2 logs:**
-```
-✅ REGISTRAR SYNC SCHEDULER ACTIVE
-✅ Server running on port 3000
-🔍 CORS Check - Origin: https://3vltn.com
-   ✅ Allowed: https://3vltn.com is in whitelist
-```
-
-**In curl test:**
-```
-< HTTP/2 200
-< access-control-allow-origin: https://3vltn.com
-< access-control-allow-credentials: true
-```
+1. ✅ Server starts without errors
+2. ✅ `curl https://api.3vltn.com/backend/registrar/supported` returns JSON
+3. ✅ No CORS errors in browser console
+4. ✅ Frontend can fetch registrar data
 
 ---
 
-**The CORS issue should now be resolved!** 🎉
+**Last Updated**: After implementing graceful error handling for registrar integration

@@ -336,36 +336,36 @@ router.post('/mailgun', async (req, res) => {
         // Get campaign pricing info (askingPrice already defined above)
         
         if (askingPrice) {
-          // Store pending approval in database
-          const approvalResult = await query(
-            `INSERT INTO stripe_approvals 
-              (campaign_id, buyer_email, buyer_name, domain_name, amount, currency, seller_email, seller_name, status, user_id, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, NOW())
-             RETURNING id`,
-            [
-              campaign.campaign_id,
-              buyerEmail,
-              buyerName,
-              campaign.domain_name,
-              askingPrice,
-              'USD',
-              sellerEmail,
-              sellerName,
-              campaign.user_id
-            ]
-          );
-          
-          const approvalId = approvalResult.rows[0].id;
-          console.log(`✅ Stripe approval request stored (ID: ${approvalId})`);
-          
-          // Store approval ID for notification
-          intent.approvalId = approvalId;
-        } else {
-          console.warn('⚠️  No pricing info available');
+            // Store pending approval in database
+            const approvalResult = await query(
+              `INSERT INTO stripe_approvals 
+                (campaign_id, buyer_email, buyer_name, domain_name, amount, currency, seller_email, seller_name, status, user_id, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, NOW())
+               RETURNING id`,
+              [
+                campaign.campaign_id,
+                buyerEmail,
+                buyerName,
+                campaign.domain_name,
+                askingPrice,
+                'USD',
+                sellerEmail,
+                sellerName,
+                campaign.user_id
+              ]
+            );
+            
+            const approvalId = approvalResult.rows[0].id;
+            console.log(`✅ Stripe approval request stored (ID: ${approvalId})`);
+            
+            // Store approval ID for notification
+            intent.approvalId = approvalId;
+          } else {
+            console.warn('⚠️  No pricing info available');
+          }
+        } catch (error) {
+          console.error('❌ Error storing Stripe approval:', error);
         }
-      } catch (error) {
-        console.error('❌ Error storing Stripe approval:', error);
-      }
     }
 
     const autoResponseEnabled = campaign.auto_response_enabled !== false; // Default to true if null
