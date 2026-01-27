@@ -9,11 +9,13 @@
     "monitor": "node monitor-dashboard.js",
     "migrate": "node migrate.js",
     "migrate:status": "node migrate.js status",
+    "migrate:registrar": "node migrate-registrar.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:duplicates": "node test-duplicate-prevention.js",
     "test:escrow": "node test-escrow-api.js",
     "test:escrow:simple": "node test-escrow-simple.js",
     "test:webhook": "node test-payment-webhook.js",
+    "test:registrar": "node test-registrar-integration.js",
     "setup:escrow-approvals": "node setup-escrow-approvals.js",
     "clean:campaigns": "node delete-all-campaigns.js"
   },

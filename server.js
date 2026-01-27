@@ -23,6 +23,7 @@ const adminRoutes = require('./routes/admin');
 const buyerRoutes = require('./routes/buyer');
 const salesRoutes = require('./routes/sales');
 const aiAgentRoutes = require('./routes/aiAgent');
+const registrarRoutes = require('./routes/registrar');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -173,6 +174,7 @@ app.use('/backend/admin', adminRoutes);
 app.use('/backend/buyer', buyerRoutes);
 app.use('/backend/sales', salesRoutes);
 app.use('/backend/ai-agent', aiAgentRoutes);
+app.use('/backend/registrar', registrarRoutes);
 
 // Buyer routes without prefix (for email links)
 app.use('/buyer', buyerRoutes);
@@ -237,6 +239,10 @@ const startServer = async () => {
     // Start email queue processor
     startEmailQueue();
     console.log('✅ Email queue processor started');
+
+    // Start registrar sync scheduler
+    const { syncScheduler } = require('./services/syncScheduler');
+    syncScheduler.start();
 
     // Start listening
     app.listen(PORT,"127.0.0.1" , () => {

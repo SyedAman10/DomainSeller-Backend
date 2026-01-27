@@ -9,6 +9,8 @@ const {
   updateTransferStatus,
   getTransferStatus
 } = require('../services/domainService');
+const { domainVerificationService } = require('../services/domainVerificationService');
+const { requireAuth } = require('../middleware/auth');
 
 /**
  * GET /api/domains/check-landing-page
@@ -803,6 +805,187 @@ router.get('/transfers/user/:userId', async (req, res) => {
       success: false,
       error: 'Failed to fetch transfers',
       message: error.message
+    });
+  }
+});
+
+/**
+ * ============================================================
+ * DOMAIN VERIFICATION ENDPOINTS
+ * ============================================================
+ */
+
+/**
+ * GET /backend/domains/verification/instructions
+ * Get instructions for verifying domain ownership
+ */
+router.get('/verification/instructions', requireAuth, async (req, res) => {
+  console.log('============================================================');
+  console.log('📥 GET /backend/domains/verification/instructions');
+  console.log(`👤 User ID: ${req.user.id}`);
+  console.log('============================================================');
+
+  try {
+    const { domain } = req.query;
+
+    if (!domain) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required parameter: domain'
+      });
+    }
+
+    const instructions = await domainVerificationService.getVerificationInstructions(
+      domain,
+      req.user.id
+    );
+
+    res.json({
+      success: true,
+      instructions: instructions
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting verification instructions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get verification instructions',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /backend/domains/verification/verify
+ * Verify domain ownership using available methods
+ */
+router.post('/verification/verify', requireAuth, async (req, res) => {
+  console.log('============================================================');
+  console.log('📥 POST /backend/domains/verification/verify');
+  console.log(`👤 User ID: ${req.user.id}`);
+  console.log('============================================================');
+
+  try {
+    const { domain, method, token, nameservers } = req.body;
+
+    if (!domain) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required field: domain'
+      });
+    }
+
+    console.log(`🔐 Verifying domain: ${domain}`);
+    console.log(`   Method: ${method || 'auto (try all)'}`);
+
+    // Build options based on provided data
+    const options = {};
+    if (token) options.token = token;
+    if (nameservers) options.nameservers = nameservers;
+
+    // Attempt verification
+    const result = await domainVerificationService.verifyDomain(
+      domain,
+      req.user.id,
+      options
+    );
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: result.message,
+        domain: result.domain,
+        verification: result.verification
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: result.message,
+        attempts: result.attempts
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error verifying domain:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Domain verification failed',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /backend/domains/verification/status
+ * Check current verification status of a domain
+ */
+router.get('/verification/status', requireAuth, async (req, res) => {
+  console.log('============================================================');
+  console.log('📥 GET /backend/domains/verification/status');
+  console.log(`👤 User ID: ${req.user.id}`);
+  console.log('============================================================');
+
+  try {
+    const { domain } = req.query;
+
+    if (!domain) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required parameter: domain'
+      });
+    }
+
+    // Get domain verification status
+    const result = await query(
+      `SELECT 
+         d.id,
+         d.name,
+         d.verification_method,
+         d.verification_level,
+         d.verification_status,
+         d.verified_at,
+         d.last_seen_at,
+         d.auto_synced,
+         ra.registrar,
+         ra.connection_status as registrar_status
+       FROM domains d
+       LEFT JOIN registrar_accounts ra ON d.registrar_account_id = ra.id
+       WHERE d.name = $1 AND d.user_id = $2`,
+      [domain, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        success: true,
+        verified: false,
+        message: 'Domain not found or not verified'
+      });
+    }
+
+    const domainData = result.rows[0];
+
+    res.json({
+      success: true,
+      verified: domainData.verification_status === 'verified',
+      domain: {
+        name: domainData.name,
+        verificationMethod: domainData.verification_method,
+        verificationLevel: domainData.verification_level,
+        verificationStatus: domainData.verification_status,
+        verifiedAt: domainData.verified_at,
+        lastSeenAt: domainData.last_seen_at,
+        autoSynced: domainData.auto_synced,
+        registrar: domainData.registrar,
+        registrarStatus: domainData.registrar_status
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error checking verification status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check verification status',
+      error: error.message
     });
   }
 });
