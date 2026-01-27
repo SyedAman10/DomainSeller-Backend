@@ -56,13 +56,14 @@ const requireAuth = (req, res, next) => {
         }
 
         // If not a number, it might be a JWT token
-        // For now, just use a default user ID
-        // TODO: Implement proper JWT verification
-        console.warn('⚠️  JWT verification not implemented, using default user ID');
-        req.user = {
-          id: 1 // Default user for testing
-        };
-        return next();
+        // For now, return error instead of using default
+        console.error('⚠️  JWT token provided but verification not implemented');
+        return res.status(401).json({
+          success: false,
+          message: 'JWT authentication not implemented',
+          error: 'Please use X-User-Id header for authentication',
+          hint: 'Add header: X-User-Id: <your_user_id>'
+        });
       }
     }
 
@@ -70,7 +71,8 @@ const requireAuth = (req, res, next) => {
     return res.status(401).json({
       success: false,
       message: 'Authentication required',
-      error: 'Missing X-User-Id or Authorization header'
+      error: 'Missing X-User-Id or Authorization header',
+      hint: 'Add header: X-User-Id: <your_user_id>'
     });
 
   } catch (error) {

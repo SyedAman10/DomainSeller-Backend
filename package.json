@@ -17,6 +17,7 @@
     "test:webhook": "node test-payment-webhook.js",
     "test:registrar": "node test-registrar-integration.js",
     "setup:escrow-approvals": "node setup-escrow-approvals.js",
+    "setup:test-user": "node create-test-user.js",
     "clean:campaigns": "node delete-all-campaigns.js"
   },
   "keywords": [
