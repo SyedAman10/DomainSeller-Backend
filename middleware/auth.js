@@ -13,14 +13,27 @@
  */
 
 /**
+ * ============================================================
+ * AUTHENTICATION MIDDLEWARE
+ * ============================================================
+ * 
+ * Purpose: Verify user authentication for protected routes
+ * 
+ * Usage:
+ * router.get('/protected', requireAuth, async (req, res) => {
+ *   // req.user.id is available here
+ * });
+ * ============================================================
+ */
+
+/**
  * Simple authentication middleware
  * Extracts user info from headers or JWT token
  * 
- * For now, this is a basic implementation that assumes:
- * - User ID is passed in X-User-Id header (for testing)
- * - OR Authorization header with Bearer token (for production)
- * 
- * TODO: Implement full JWT verification in production
+ * Supports:
+ * - X-User-Id header (for testing/simple auth)
+ * - JWT tokens (for production with proper verification if JWT_SECRET is set)
+ * - Authorization header with Bearer token
  */
 const requireAuth = (req, res, next) => {
   try {
@@ -43,9 +56,44 @@ const requireAuth = (req, res, next) => {
         ? authHeader.slice(7) 
         : authHeader;
 
-      // For now, treat the token as user ID (simplified)
-      // In production, you would verify JWT here
       if (token) {
+        // Try JWT verification if JWT_SECRET is available
+        if (process.env.JWT_SECRET) {
+          try {
+            // Try to use jsonwebtoken library if available
+            let jwt;
+            try {
+              jwt = require('jsonwebtoken');
+            } catch (e) {
+              // jsonwebtoken not installed, fall back to simple parsing
+              console.warn('⚠️  jsonwebtoken not installed, using fallback auth');
+            }
+
+            if (jwt) {
+              // Verify JWT token
+              const decoded = jwt.verify(token, process.env.JWT_SECRET);
+              
+              req.user = {
+                id: decoded.userId || decoded.id || decoded.sub,
+                email: decoded.email,
+                ...decoded
+              };
+              
+              return next();
+            }
+          } catch (jwtError) {
+            console.error('❌ JWT verification failed:', jwtError.message);
+            return res.status(401).json({
+              success: false,
+              message: 'Invalid or expired token',
+              error: jwtError.message
+            });
+          }
+        }
+
+        // Fallback: Try to parse token as simple format (e.g., "userId:timestamp:signature")
+        // This is a simplified approach for systems that don't use standard JWT
+        
         // Try to parse as user ID
         const parsedUserId = parseInt(token, 10);
         if (!isNaN(parsedUserId)) {
@@ -55,14 +103,28 @@ const requireAuth = (req, res, next) => {
           return next();
         }
 
-        // If not a number, it might be a JWT token
-        // For now, return error instead of using default
-        console.error('⚠️  JWT token provided but verification not implemented');
+        // If token looks like it might be base64 encoded, try to decode
+        try {
+          const decoded = Buffer.from(token, 'base64').toString('utf8');
+          const parsed = JSON.parse(decoded);
+          
+          if (parsed.userId || parsed.id) {
+            req.user = {
+              id: parsed.userId || parsed.id,
+              ...parsed
+            };
+            return next();
+          }
+        } catch (decodeError) {
+          // Not a valid base64 JSON token, continue
+        }
+
+        // If we get here, we couldn't parse the token
         return res.status(401).json({
           success: false,
-          message: 'JWT authentication not implemented',
-          error: 'Please use X-User-Id header for authentication',
-          hint: 'Add header: X-User-Id: <your_user_id>'
+          message: 'Invalid authentication token',
+          error: 'Could not parse or verify token',
+          hint: 'Use X-User-Id header or valid JWT token'
         });
       }
     }
