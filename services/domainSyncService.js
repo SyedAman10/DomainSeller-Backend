@@ -115,7 +115,7 @@ class DomainSyncService {
 
       // 5. Get current domains for this registrar account from our database
       const dbDomainsResult = await query(
-        `SELECT id, name, status, verification_status, last_seen_at
+        `SELECT id, name, status, last_seen_at
          FROM domains
          WHERE registrar_account_id = $1`,
         [registrarAccountId]
@@ -220,9 +220,9 @@ class DomainSyncService {
             // Revoke verification but keep the domain record
             await query(
               `UPDATE domains
-               SET verification_status = 'revoked',
-                   registrar_account_id = NULL,
+               SET registrar_account_id = NULL,
                    verification_method = NULL,
+                   verification_level = 1,
                    updated_at = NOW()
                WHERE id = $1`,
               [domain.id]
