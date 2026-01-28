@@ -94,6 +94,9 @@ router.post('/connect', requireAuth, async (req, res) => {
         success: false,
         message: 'Failed to connect to registrar',
         error: connectionTest.message,
+        hint: connectionTest.hint,
+        errorCode: connectionTest.errorCode,
+        errorDetails: connectionTest.errorDetails,
         accountId: accountId
       });
     }

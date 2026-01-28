@@ -111,10 +111,39 @@ class GoDaddyAdapter extends RegistrarAdapter {
 
       if (!response.ok) {
         const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { message: errorText };
+        }
+
+        // Check for common GoDaddy errors
+        let errorMessage = `GoDaddy API error: ${response.status} - ${errorText}`;
+        let hint = null;
+
+        if (response.status === 403) {
+          errorMessage = 'GoDaddy API credentials are invalid or do not have permission';
+          hint = 'Please verify:\n' +
+                 '1. Your API key and secret are correct\n' +
+                 '2. You are using PRODUCTION keys (not OTE/test keys)\n' +
+                 '3. Your GoDaddy account has active domains\n' +
+                 '4. The API key has "Domain" permissions enabled';
+        } else if (response.status === 401) {
+          errorMessage = 'GoDaddy API authentication failed';
+          hint = 'Your API key or secret is incorrect. Please check your GoDaddy API credentials.';
+        } else if (response.status === 429) {
+          errorMessage = 'GoDaddy API rate limit exceeded';
+          hint = 'Please wait a few minutes before trying again.';
+        }
+
         return {
           success: false,
-          message: `GoDaddy API error: ${response.status} - ${errorText}`,
-          statusCode: response.status
+          message: errorMessage,
+          hint: hint,
+          statusCode: response.status,
+          errorCode: errorData.code,
+          errorDetails: errorData.message
         };
       }
 
