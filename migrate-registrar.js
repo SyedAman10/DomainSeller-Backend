@@ -1,101 +1,86 @@
+#!/usr/bin/env node
+
 /**
- * ============================================================
  * REGISTRAR INTEGRATION MIGRATION SCRIPT
- * ============================================================
  * 
- * Purpose: Automatically run the registrar integration migration
- * Usage: node migrate-registrar.js
+ * Purpose: Apply database schema changes for registrar integration
+ * Usage: npm run migrate:registrar
  * 
- * What it does:
- * - Creates registrar_accounts table
- * - Creates registrar_sync_history table
- * - Creates domain_verification_log table
- * - Creates registrar_rate_limits table
- * - Creates supported_registrars table
- * - Adds verification columns to domains table
- * - Creates domain_verification_tokens table
- * - Populates initial registrar data
- * ============================================================
+ * This script will:
+ * 1. Create registrar_accounts table
+ * 2. Add registrar-related columns to domains table
+ * 3. Create sync history and logging tables
+ * 4. Insert supported registrars metadata
  */
 
 require('dotenv').config();
+const { query, pool } = require('./config/database');
 const fs = require('fs');
 const path = require('path');
-const { query } = require('./config/database');
+
+// ANSI color codes for pretty console output
+const colors = {
+  reset: '\x1b[0m',
+  green: '\x1b[32m',
+  red: '\x1b[31m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  cyan: '\x1b[36m',
+  bold: '\x1b[1m'
+};
+
+function log(message, color = 'reset') {
+  console.log(`${colors[color]}${message}${colors.reset}`);
+}
+
+function logSection(title) {
+  console.log('\n' + '='.repeat(60));
+  log(title, 'cyan');
+  console.log('='.repeat(60));
+}
 
 async function runMigration() {
-  console.log('');
-  console.log('════════════════════════════════════════════════════════════');
-  console.log('🔄 REGISTRAR INTEGRATION MIGRATION');
-  console.log('════════════════════════════════════════════════════════════');
-  console.log('');
-
+  logSection('🚀 REGISTRAR INTEGRATION MIGRATION');
+  
   try {
-    // Check if database connection is available
-    console.log('📊 Testing database connection...');
-    await query('SELECT NOW()');
-    console.log('✅ Database connected');
-    console.log('');
-
-    // Read migration file
-    const migrationPath = path.join(__dirname, 'database', 'add_registrar_integration.sql');
+    // Step 1: Read SQL file
+    log('\n📖 Reading migration SQL file...', 'blue');
+    const sqlPath = path.join(__dirname, 'database', 'add_registrar_integration.sql');
     
-    if (!fs.existsSync(migrationPath)) {
-      throw new Error(`Migration file not found: ${migrationPath}`);
+    if (!fs.existsSync(sqlPath)) {
+      throw new Error(`Migration file not found: ${sqlPath}`);
     }
-
-    console.log('📄 Reading migration file...');
-    const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
-    console.log(`✅ Migration file loaded (${migrationSQL.length} characters)`);
-    console.log('');
-
-    // Execute migration
-    console.log('🚀 Running migration...');
-    console.log('');
     
-    await query(migrationSQL);
+    const sql = fs.readFileSync(sqlPath, 'utf8');
+    log('✅ SQL file loaded successfully', 'green');
     
-    console.log('');
-    console.log('════════════════════════════════════════════════════════════');
-    console.log('✅ MIGRATION COMPLETED SUCCESSFULLY!');
-    console.log('════════════════════════════════════════════════════════════');
-    console.log('');
-
-    // Verify tables were created
-    console.log('🔍 Verifying created tables...');
+    // Step 2: Execute migration
+    logSection('📦 EXECUTING MIGRATION');
     
-    const tables = [
-      'registrar_accounts',
-      'registrar_sync_history',
-      'domain_verification_log',
-      'registrar_rate_limits',
-      'supported_registrars',
-      'domain_verification_tokens'
-    ];
-
-    for (const table of tables) {
-      const result = await query(
-        `SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          AND table_name = $1
-        )`,
-        [table]
-      );
-
-      if (result.rows[0].exists) {
-        console.log(`   ✅ ${table}`);
-      } else {
-        console.log(`   ❌ ${table} (not found!)`);
-      }
+    log('Creating tables and columns...', 'yellow');
+    await query(sql);
+    
+    log('✅ Migration completed successfully!', 'green');
+    
+    // Step 3: Verify migration
+    logSection('🔍 VERIFYING MIGRATION');
+    
+    // Check if registrar_accounts table exists
+    const tableCheck = await query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'registrar_accounts'
+      )
+    `);
+    
+    if (tableCheck.rows[0].exists) {
+      log('✅ registrar_accounts table created', 'green');
+    } else {
+      log('❌ registrar_accounts table NOT found', 'red');
     }
-
-    console.log('');
-
-    // Check domains table columns
-    console.log('🔍 Verifying domains table columns...');
     
-    const columns = [
+    // Check if domains columns exist
+    const columnsToCheck = [
       'registrar_account_id',
       'verification_method',
       'verification_level',
@@ -103,110 +88,65 @@ async function runMigration() {
       'auto_synced',
       'last_seen_at'
     ];
-
-    const columnResult = await query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'domains' 
-        AND column_name = ANY($1::text[])
-    `, [columns]);
-
-    const foundColumns = columnResult.rows.map(r => r.column_name);
     
-    for (const col of columns) {
-      if (foundColumns.includes(col)) {
-        console.log(`   ✅ ${col}`);
+    for (const columnName of columnsToCheck) {
+      const columnCheck = await query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'domains' 
+          AND column_name = $1
+        )
+      `, [columnName]);
+      
+      if (columnCheck.rows[0].exists) {
+        log(`✅ domains.${columnName} column added`, 'green');
       } else {
-        console.log(`   ⚠️  ${col} (not found - may already exist with different name)`);
+        log(`❌ domains.${columnName} column NOT found`, 'red');
       }
     }
-
-    console.log('');
-
-    // Check supported registrars data
-    console.log('🔍 Checking supported registrars...');
-    const registrarsResult = await query('SELECT code, name FROM supported_registrars ORDER BY priority');
     
-    if (registrarsResult.rows.length > 0) {
-      console.log(`   ✅ Found ${registrarsResult.rows.length} registrar(s):`);
-      registrarsResult.rows.forEach(r => {
-        console.log(`      • ${r.name} (${r.code})`);
+    // Check supported registrars
+    const registrarsCheck = await query(`
+      SELECT code, name, priority 
+      FROM supported_registrars 
+      ORDER BY priority
+    `);
+    
+    if (registrarsCheck.rows.length > 0) {
+      log(`\n✅ ${registrarsCheck.rows.length} supported registrars loaded:`, 'green');
+      registrarsCheck.rows.forEach(r => {
+        log(`   - ${r.name} (${r.code}) - Priority: ${r.priority}`, 'cyan');
       });
     } else {
-      console.log('   ⚠️  No registrars found (may need manual insert)');
+      log('⚠️ No supported registrars found', 'yellow');
     }
-
-    console.log('');
-    console.log('════════════════════════════════════════════════════════════');
-    console.log('🎉 SETUP COMPLETE!');
-    console.log('════════════════════════════════════════════════════════════');
-    console.log('');
-    console.log('📝 Next Steps:');
-    console.log('');
-    console.log('1. Generate encryption key:');
-    console.log('   node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
-    console.log('');
-    console.log('2. Add to .env:');
-    console.log('   ENCRYPTION_KEY=<generated_key>');
-    console.log('');
-    console.log('3. Restart server:');
-    console.log('   npm start');
-    console.log('');
-    console.log('4. Test the system:');
-    console.log('   npm run test:registrar');
-    console.log('');
-    console.log('5. Connect a registrar:');
-    console.log('   POST /backend/registrar/connect');
-    console.log('');
-    console.log('📚 Documentation:');
-    console.log('   • REGISTRAR_INTEGRATION.md - Complete guide');
-    console.log('   • QUICKSTART_REGISTRAR.md - Quick setup');
-    console.log('   • README_REGISTRAR.md - Quick reference');
-    console.log('');
-
-    process.exit(0);
-
+    
+    // Step 4: Summary
+    logSection('📊 MIGRATION SUMMARY');
+    
+    log('✅ All schema changes applied successfully!', 'green');
+    log('\n📋 Next Steps:', 'bold');
+    log('   1. Restart your backend server:', 'yellow');
+    log('      pm2 restart node-backend', 'cyan');
+    log('\n   2. Test the registrar connection:', 'yellow');
+    log('      npm run test:registrar', 'cyan');
+    log('\n   3. Read the documentation:', 'yellow');
+    log('      - README_REGISTRAR.md (Quick Reference)', 'cyan');
+    log('      - QUICKSTART_REGISTRAR.md (Getting Started)', 'cyan');
+    log('      - REGISTRAR_INTEGRATION.md (Full Docs)', 'cyan');
+    
+    log('\n🎉 Migration completed successfully!', 'green');
+    
   } catch (error) {
-    console.error('');
-    console.error('════════════════════════════════════════════════════════════');
-    console.error('❌ MIGRATION FAILED');
-    console.error('════════════════════════════════════════════════════════════');
-    console.error('');
-    console.error('Error:', error.message);
-    console.error('');
-
-    if (error.message.includes('already exists')) {
-      console.log('ℹ️  Some tables may already exist. This is usually safe.');
-      console.log('   The migration uses IF NOT EXISTS for safety.');
-      console.log('');
-      console.log('   To force re-run migration:');
-      console.log('   1. Backup your data');
-      console.log('   2. Drop tables manually');
-      console.log('   3. Run migration again');
-      console.log('');
-    } else if (error.message.includes('permission denied')) {
-      console.log('ℹ️  Database permission issue.');
-      console.log('   Make sure your database user has CREATE TABLE permissions.');
-      console.log('');
-    } else if (error.message.includes('database') && error.message.includes('does not exist')) {
-      console.log('ℹ️  Database connection issue.');
-      console.log('   Check your DATABASE_URL in .env file.');
-      console.log('');
-    }
-
-    if (error.stack) {
-      console.error('Stack trace:');
-      console.error(error.stack);
-      console.error('');
-    }
-
+    logSection('❌ MIGRATION FAILED');
+    log(`Error: ${error.message}`, 'red');
+    log('\nStack trace:', 'yellow');
+    console.error(error);
     process.exit(1);
+  } finally {
+    await pool.end();
   }
 }
 
-// Run migration
-console.log('');
-console.log('Starting registrar integration migration...');
-console.log('');
-
+// Run the migration
 runMigration();

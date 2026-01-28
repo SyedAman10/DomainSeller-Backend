@@ -335,9 +335,9 @@ router.delete('/disconnect', requireAuth, async (req, res) => {
     
     const revokeResult = await query(
       `UPDATE domains
-       SET verification_status = 'revoked',
-           registrar_account_id = NULL,
+       SET registrar_account_id = NULL,
            verification_method = NULL,
+           verification_level = 1,
            updated_at = NOW()
        WHERE registrar_account_id = $1
        RETURNING name`,
