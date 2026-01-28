@@ -122,7 +122,17 @@ class GoDaddyAdapter extends RegistrarAdapter {
         let errorMessage = `GoDaddy API error: ${response.status} - ${errorText}`;
         let hint = null;
 
-        if (response.status === 403) {
+        if (response.status === 400 && errorData.code === 'UNABLE_TO_AUTHENTICATE') {
+          errorMessage = 'GoDaddy API authentication failed - credentials format is incorrect';
+          hint = 'Common issues:\n' +
+                 '1. API key/secret format is wrong (check for extra spaces)\n' +
+                 '2. Using PRODUCTION keys with OTE environment (or vice versa)\n' +
+                 '3. Key/secret are swapped\n\n' +
+                 'Current environment: ' + this.baseUrl + '\n' +
+                 'Make sure your keys match this environment:\n' +
+                 '- OTE keys → https://api.ote-godaddy.com\n' +
+                 '- Production keys → https://api.godaddy.com';
+        } else if (response.status === 403) {
           errorMessage = 'GoDaddy API credentials are invalid or do not have permission';
           hint = 'MOST COMMON ISSUE: GoDaddy requires 10+ domains OR Domain Pro Plan for API access!\n\n' +
                  'Solutions:\n' +

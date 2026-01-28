@@ -18,6 +18,7 @@
     "test:registrar": "node test-registrar-integration.js",
     "test:godaddy": "powershell -ExecutionPolicy Bypass -File test-godaddy-api.ps1",
     "test:godaddy:bash": "bash test-godaddy-api.sh",
+    "check:godaddy": "node check-godaddy-env.js",
     "setup:escrow-approvals": "node setup-escrow-approvals.js",
     "setup:test-user": "node create-test-user.js",
     "clean:campaigns": "node delete-all-campaigns.js"
