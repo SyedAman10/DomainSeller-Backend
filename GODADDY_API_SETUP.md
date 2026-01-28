@@ -4,7 +4,38 @@
 
 If you're getting a 403 "ACCESS_DENIED" error, it's usually one of these issues:
 
-### **1. Using OTE/Test Keys Instead of Production Keys**
+### **1. GoDaddy Account Doesn't Meet Minimum Requirements** ⚠️ **MOST COMMON**
+
+**GoDaddy API has strict account requirements:**
+
+> **To use the Domains API in Production, you need:**
+> - **10+ domains** in your GoDaddy account, OR
+> - **Active "Discount Domain Club – Domain Pro Plan"**
+
+**✅ Solutions:**
+1. **Use OTE/Test Environment** (No restrictions):
+   - Set `GODADDY_API_URL=https://api.ote-godaddy.com` in your `.env`
+   - Use TEST API keys (first keys you create are test keys)
+   - Perfect for development and testing
+
+2. **Upgrade Your Production Account**:
+   - Add 10+ domains to your account
+   - OR subscribe to "Discount Domain Club – Domain Pro Plan"
+   - Then use Production API keys
+
+3. **Use a Different Registrar**:
+   - Cloudflare (no minimum requirements)
+   - Namecheap (more flexible)
+
+---
+
+### **2. Using OTE/Test Keys Instead of Production Keys**
+
+GoDaddy has TWO separate environments:
+- **OTE (Test Environment)**: `https://api.ote-godaddy.com`
+- **Production**: `https://api.godaddy.com`
+
+### **2. Using OTE/Test Keys with Production URL (or vice versa)**
 
 GoDaddy has TWO separate environments:
 - **OTE (Test Environment)**: `https://api.ote-godaddy.com`
@@ -14,11 +45,15 @@ GoDaddy has TWO separate environments:
 You created API keys in the OTE environment but our system uses production.
 
 **✅ Solution:**
-Create production API keys at: https://developer.godaddy.com/keys
+Match your API keys to the environment:
+- **Test keys** → Set `GODADDY_API_URL=https://api.ote-godaddy.com`
+- **Production keys** → Leave `GODADDY_API_URL` blank (or set to `https://api.godaddy.com`)
 
 ---
 
-### **2. API Key Doesn't Have Domain Permissions**
+### **3. API Key Doesn't Have Domain Permissions**
+
+### **3. API Key Doesn't Have Domain Permissions**
 
 Your API key must have **Domain** permissions enabled.
 
@@ -30,16 +65,17 @@ Your API key must have **Domain** permissions enabled.
 
 ---
 
-### **3. No Active Domains in Account**
+### **4. No Active Domains in Account**
 
-The API test fetches your domain list. If you have no domains, it might fail.
+The API test fetches your domain list. If you have no domains AND don't meet the minimum requirements, it will fail.
 
 **✅ Solution:**
-Add at least one domain to your GoDaddy account first.
+- For OTE/Test: No domains needed
+- For Production: Need 10+ domains OR Domain Pro Plan
 
 ---
 
-### **4. API Key Format Issues**
+### **5. API Key Format Issues**
 
 **Correct Format:**
 - **API Key**: Usually ~36 characters, looks like `h1eM8ymN3TNf_YWMh3x7gW4YQpZJt4z9Cyi`
@@ -97,7 +133,31 @@ If you're still getting errors, verify:
 
 ## 🔧 **Testing Your API Keys Manually**
 
-You can test your GoDaddy API keys using curl:
+### **Option 1: Use Our Test Script (Recommended)**
+
+We've created a handy test script for you!
+
+**Windows (PowerShell):**
+```bash
+npm run test:godaddy
+```
+
+**Linux/Mac (Bash):**
+```bash
+npm run test:godaddy:bash
+```
+
+The script will:
+- ✅ Prompt you for your API credentials
+- ✅ Test the connection to GoDaddy
+- ✅ Show you all your domains
+- ✅ Give helpful error messages if something is wrong
+
+---
+
+### **Option 2: Test with Curl**
+
+You can also test your GoDaddy API keys using curl:
 
 ```bash
 curl -X GET "https://api.godaddy.com/v1/domains" \

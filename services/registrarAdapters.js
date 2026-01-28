@@ -124,11 +124,16 @@ class GoDaddyAdapter extends RegistrarAdapter {
 
         if (response.status === 403) {
           errorMessage = 'GoDaddy API credentials are invalid or do not have permission';
-          hint = 'Please verify:\n' +
-                 '1. Your API key and secret are correct\n' +
-                 '2. You are using PRODUCTION keys (not OTE/test keys)\n' +
-                 '3. Your GoDaddy account has active domains\n' +
-                 '4. The API key has "Domain" permissions enabled';
+          hint = 'MOST COMMON ISSUE: GoDaddy requires 10+ domains OR Domain Pro Plan for API access!\n\n' +
+                 'Solutions:\n' +
+                 '1. Use OTE/Test environment (no restrictions):\n' +
+                 '   - Set GODADDY_API_URL=https://api.ote-godaddy.com in .env\n' +
+                 '   - Use TEST API keys\n' +
+                 '2. For Production:\n' +
+                 '   - Add 10+ domains to your account, OR\n' +
+                 '   - Subscribe to "Discount Domain Club - Domain Pro Plan"\n' +
+                 '3. Verify your API key has "Domain" permissions\n' +
+                 '4. Consider using Cloudflare or Namecheap (no minimums)';
         } else if (response.status === 401) {
           errorMessage = 'GoDaddy API authentication failed';
           hint = 'Your API key or secret is incorrect. Please check your GoDaddy API credentials.';

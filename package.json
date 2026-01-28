@@ -16,6 +16,8 @@
     "test:escrow:simple": "node test-escrow-simple.js",
     "test:webhook": "node test-payment-webhook.js",
     "test:registrar": "node test-registrar-integration.js",
+    "test:godaddy": "powershell -ExecutionPolicy Bypass -File test-godaddy-api.ps1",
+    "test:godaddy:bash": "bash test-godaddy-api.sh",
     "setup:escrow-approvals": "node setup-escrow-approvals.js",
     "setup:test-user": "node create-test-user.js",
     "clean:campaigns": "node delete-all-campaigns.js"
