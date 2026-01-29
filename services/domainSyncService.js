@@ -159,11 +159,12 @@ class DomainSyncService {
               );
             } else {
               // Insert new domain with registrar verification
+              // Note: value defaults to 0 and category to 'Other' since we don't have this info from registrar API
               await query(
                 `INSERT INTO domains 
-                  (name, user_id, registrar_account_id, verification_method, verification_level, 
+                  (name, user_id, value, category, registrar_account_id, verification_method, verification_level, 
                    verified_at, auto_synced, last_seen_at, status, created_at, updated_at)
-                 VALUES ($1, $2, $3, 'registrar_api', 3, NOW(), true, NOW(), 'Available', NOW(), NOW())`,
+                 VALUES ($1, $2, 0, 'Other', $3, 'registrar_api', 3, NOW(), true, NOW(), 'Available', NOW(), NOW())`,
                 [domainName, account.user_id, registrarAccountId]
               );
             }
