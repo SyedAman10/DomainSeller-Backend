@@ -141,14 +141,13 @@ class DomainSyncService {
             await query(
               `INSERT INTO domains 
                 (name, user_id, registrar_account_id, verification_method, verification_level, 
-                 verification_status, verified_at, auto_synced, last_seen_at, status, created_at, updated_at)
-               VALUES ($1, $2, $3, 'registrar_api', 3, 'verified', NOW(), true, NOW(), 'Available', NOW(), NOW())
+                 verified_at, auto_synced, last_seen_at, status, created_at, updated_at)
+               VALUES ($1, $2, $3, 'registrar_api', 3, NOW(), true, NOW(), 'Available', NOW(), NOW())
                ON CONFLICT (name) DO UPDATE SET
                  user_id = EXCLUDED.user_id,
                  registrar_account_id = EXCLUDED.registrar_account_id,
                  verification_method = EXCLUDED.verification_method,
                  verification_level = EXCLUDED.verification_level,
-                 verification_status = 'verified',
                  verified_at = NOW(),
                  auto_synced = true,
                  last_seen_at = NOW(),
