@@ -90,6 +90,26 @@ class DomainSyncService {
         registrarDomains = await adapter.fetchDomains();
         stats.found = registrarDomains.length;
         console.log(`✅ Found ${registrarDomains.length} domains on ${account.registrar}`);
+        
+        // Log detailed information about what we received
+        if (registrarDomains.length > 0) {
+          console.log('\n📋 DETAILED DOMAIN INFORMATION FROM REGISTRAR:');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          
+          // Show first 3 domains as examples
+          const sampleDomains = registrarDomains.slice(0, 3);
+          sampleDomains.forEach((domain, idx) => {
+            console.log(`\n📌 Domain ${idx + 1}: ${domain.name || domain}`);
+            if (typeof domain === 'object') {
+              console.log('   Available data:', JSON.stringify(domain, null, 2));
+            }
+          });
+          
+          if (registrarDomains.length > 3) {
+            console.log(`\n   ... and ${registrarDomains.length - 3} more domains`);
+          }
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+        }
       } catch (fetchError) {
         console.error(`❌ Failed to fetch domains:`, fetchError.message);
         
@@ -123,20 +143,53 @@ class DomainSyncService {
 
       const dbDomains = dbDomainsResult.rows;
       const dbDomainNames = new Set(dbDomains.map(d => d.name.toLowerCase()));
-      const registrarDomainNames = new Set(registrarDomains.map(d => d.toLowerCase()));
+      
+      // Extract domain names (handle both string and object formats)
+      const registrarDomainNames = new Set(
+        registrarDomains.map(d => {
+          const name = typeof d === 'string' ? d : (d.name || d.domain);
+          return name.toLowerCase();
+        })
+      );
+      
+      // Create a map of domain name -> full domain data for later use
+      const registrarDomainMap = new Map();
+      registrarDomains.forEach(d => {
+        const name = typeof d === 'string' ? d : (d.name || d.domain);
+        registrarDomainMap.set(name.toLowerCase(), d);
+      });
 
       console.log(`📊 Current database domains: ${dbDomains.length}`);
 
       // 6. Process new domains (not in our database)
-      const newDomains = registrarDomains.filter(
-        d => !dbDomainNames.has(d.toLowerCase())
-      );
+      const newDomains = registrarDomains.filter(d => {
+        const name = typeof d === 'string' ? d : (d.name || d.domain);
+        return !dbDomainNames.has(name.toLowerCase());
+      });
 
       if (newDomains.length > 0) {
         console.log(`➕ Adding ${newDomains.length} new domain(s)...`);
         
-        for (const domainName of newDomains) {
+        for (const domainData of newDomains) {
           try {
+            // Extract domain name and data
+            const domainName = typeof domainData === 'string' 
+              ? domainData 
+              : (domainData.name || domainData.domain);
+            
+            // Extract additional domain information
+            const expiryDate = domainData.expires ? new Date(domainData.expires) : null;
+            const autoRenew = domainData.renewAuto !== undefined ? domainData.renewAuto : true;
+            const transferLocked = domainData.locked !== undefined ? domainData.locked : true;
+            const registrarName = account.registrar;
+            
+            console.log(`   📝 Processing: ${domainName}`);
+            if (typeof domainData === 'object') {
+              console.log(`      Expires: ${expiryDate || 'N/A'}`);
+              console.log(`      Auto-renew: ${autoRenew}`);
+              console.log(`      Transfer locked: ${transferLocked}`);
+            }
+            
             // Check if domain already exists for this user
             const existingDomain = await query(
               `SELECT id FROM domains WHERE user_id = $1 AND name = $2`,
@@ -144,7 +197,7 @@ class DomainSyncService {
             );
 
             if (existingDomain.rows.length > 0) {
-              // Update existing domain with registrar verification
+              // Update existing domain with registrar verification and additional data
               await query(
                 `UPDATE domains 
                  SET registrar_account_id = $1,
@@ -153,19 +206,23 @@ class DomainSyncService {
                      verified_at = NOW(),
                      auto_synced = true,
                      last_seen_at = NOW(),
+                     expiry_date = COALESCE($4, expiry_date),
+                     auto_renew = COALESCE($5, auto_renew),
+                     transfer_locked = COALESCE($6, transfer_locked),
+                     registrar = COALESCE($7, registrar),
                      updated_at = NOW()
                  WHERE id = $2`,
-                [registrarAccountId, existingDomain.rows[0].id]
+                [registrarAccountId, existingDomain.rows[0].id, expiryDate, autoRenew, transferLocked, registrarName]
               );
             } else {
-              // Insert new domain with registrar verification
+              // Insert new domain with registrar verification and additional data
               // Note: value defaults to 0 and category to 'Other' since we don't have this info from registrar API
               await query(
                 `INSERT INTO domains 
                   (name, user_id, value, category, registrar_account_id, verification_method, verification_level, 
-                   verified_at, auto_synced, last_seen_at, status, created_at, updated_at)
-                 VALUES ($1, $2, 0, 'Other', $3, 'registrar_api', 3, NOW(), true, NOW(), 'Available', NOW(), NOW())`,
-                [domainName, account.user_id, registrarAccountId]
+                   verified_at, auto_synced, last_seen_at, status, expiry_date, auto_renew, transfer_locked, registrar, created_at, updated_at)
+                 VALUES ($1, $2, 0, 'Other', $3, 'registrar_api', 3, NOW(), true, NOW(), 'Available', $4, $5, $6, $7, NOW(), NOW())`,
+                [domainName, account.user_id, registrarAccountId, expiryDate, autoRenew, transferLocked, registrarName]
               );
             }
 
@@ -192,26 +249,43 @@ class DomainSyncService {
       }
 
       // 7. Update existing domains (still in registrar)
-      const existingDomains = registrarDomains.filter(
-        d => dbDomainNames.has(d.toLowerCase())
-      );
+      const existingDomains = registrarDomains.filter(d => {
+        const name = typeof d === 'string' ? d : (d.name || d.domain);
+        return dbDomainNames.has(name.toLowerCase());
+      });
 
       if (existingDomains.length > 0) {
         console.log(`🔄 Updating ${existingDomains.length} existing domain(s)...`);
         
-        for (const domainName of existingDomains) {
+        for (const domainData of existingDomains) {
           try {
+            const domainName = typeof domainData === 'string' 
+              ? domainData 
+              : (domainData.name || domainData.domain);
+            
+            // Extract additional domain information for update
+            const expiryDate = domainData.expires ? new Date(domainData.expires) : null;
+            const autoRenew = domainData.renewAuto !== undefined ? domainData.renewAuto : null;
+            const transferLocked = domainData.locked !== undefined ? domainData.locked : null;
+            const registrarName = account.registrar;
+            
             await query(
               `UPDATE domains
                SET last_seen_at = NOW(),
-                   verification_status = 'verified',
+                   expiry_date = COALESCE($3, expiry_date),
+                   auto_renew = COALESCE($4, auto_renew),
+                   transfer_locked = COALESCE($5, transfer_locked),
+                   registrar = COALESCE($6, registrar),
                    updated_at = NOW()
                WHERE name = $1 AND registrar_account_id = $2`,
-              [domainName, registrarAccountId]
+              [domainName, registrarAccountId, expiryDate, autoRenew, transferLocked, registrarName]
             );
 
             stats.updated++;
           } catch (error) {
+            const domainName = typeof domainData === 'string' 
+              ? domainData 
+              : (domainData.name || domainData.domain);
             console.error(`   ❌ Failed to update ${domainName}:`, error.message);
             stats.errors.push(`Failed to update ${domainName}: ${error.message}`);
           }

@@ -203,14 +203,43 @@ class GoDaddyAdapter extends RegistrarAdapter {
 
       const domains = await response.json();
       
-      // GoDaddy returns array of domain objects with 'domain' property
-      const domainNames = domains
-        .filter(d => d.status === 'ACTIVE') // Only active domains
-        .map(d => this.normalizeDomain(d.domain));
-
-      console.log(`✅ Found ${domainNames.length} active domains on GoDaddy`);
+      // Log sample of what we receive (first domain)
+      if (domains.length > 0) {
+        console.log('📋 Sample domain data from GoDaddy API:');
+        console.log(JSON.stringify(domains[0], null, 2));
+        console.log('📋 Available fields:', Object.keys(domains[0]).join(', '));
+      }
       
-      return domainNames;
+      // GoDaddy returns array of domain objects with properties like:
+      // - domain (name)
+      // - status (ACTIVE, EXPIRED, etc.)
+      // - expires (expiry date)
+      // - locked (transfer lock status)
+      // - privacy (WHOIS privacy status)
+      // - renewAuto (auto-renewal status)
+      // - etc.
+      
+      // Return full domain objects, not just names
+      const activeDomains = domains
+        .filter(d => d.status === 'ACTIVE') // Only active domains
+        .map(d => ({
+          name: this.normalizeDomain(d.domain),
+          status: d.status,
+          expires: d.expires,
+          locked: d.locked,
+          privacy: d.privacy,
+          renewAuto: d.renewAuto,
+          // Include all other fields
+          ...d
+        }));
+
+      console.log(`✅ Found ${activeDomains.length} active domains on GoDaddy`);
+      console.log(`📊 Domain statuses:`, domains.reduce((acc, d) => {
+        acc[d.status] = (acc[d.status] || 0) + 1;
+        return acc;
+      }, {}));
+      
+      return activeDomains;
     } catch (error) {
       console.error('❌ GoDaddy fetch error:', error);
       throw error;
