@@ -333,24 +333,52 @@ router.delete('/disconnect', requireAuth, async (req, res) => {
 
     const registrar = accountCheck.rows[0].registrar;
 
-    // Step 1: Revoke verification for all domains from this registrar
-    console.log(`🔄 Revoking verification for domains from ${registrar}...`);
+    // Step 1: Delete auto-synced domains (to prevent duplicates)
+    console.log(`🗑️  Deleting auto-synced domains from ${registrar}...`);
     
+    const deleteResult = await query(
+      `DELETE FROM domains
+       WHERE registrar_account_id = $1 AND auto_synced = true
+       RETURNING id, name`,
+      [accountId]
+    );
+
+    console.log(`✅ Deleted ${deleteResult.rows.length} auto-synced domain(s)`);
+
+    // Step 2: Revoke verification for manually added domains (keep them, just remove registrar link)
     const revokeResult = await query(
       `UPDATE domains
        SET registrar_account_id = NULL,
            verification_method = NULL,
            verification_level = 1,
            updated_at = NOW()
-       WHERE registrar_account_id = $1
+       WHERE registrar_account_id = $1 AND auto_synced = false
        RETURNING name`,
       [accountId]
     );
 
-    console.log(`✅ Revoked ${revokeResult.rows.length} domain(s)`);
+    console.log(`✅ Revoked ${revokeResult.rows.length} manually-added domain(s)`);
 
-    // Step 2: Log revocation events
+    // Step 3: Log deletion and revocation events
     const services = getSecurityServices();
+    
+    // Log deletions
+    for (const domain of deleteResult.rows) {
+      await services.logger.logVerification(
+        domain.name,
+        req.user.id,
+        'revoked',
+        {
+          verificationMethod: 'registrar_api',
+          registrarAccountId: accountId,
+          oldStatus: 'verified',
+          newStatus: 'deleted',
+          reason: `Domain deleted after disconnecting ${registrar} account (was auto-synced)`
+        }
+      );
+    }
+    
+    // Log revocations for manually-added domains
     for (const domain of revokeResult.rows) {
       await services.logger.logVerification(
         domain.name,
@@ -361,12 +389,12 @@ router.delete('/disconnect', requireAuth, async (req, res) => {
           registrarAccountId: accountId,
           oldStatus: 'verified',
           newStatus: 'revoked',
-          reason: `User disconnected ${registrar} account`
+          reason: `User disconnected ${registrar} account (domain kept, verification revoked)`
         }
       );
     }
 
-    // Step 3: Delete registrar account credentials
+    // Step 4: Delete registrar account credentials
     await services.credentials.deleteCredentials(req.user.id, accountId);
 
     console.log(`✅ Disconnected ${registrar} account successfully`);
@@ -374,7 +402,9 @@ router.delete('/disconnect', requireAuth, async (req, res) => {
     res.json({
       success: true,
       message: `Successfully disconnected ${registrar} account`,
-      domainsRevoked: revokeResult.rows.length
+      domainsDeleted: deleteResult.rows.length,
+      domainsRevoked: revokeResult.rows.length,
+      totalAffected: deleteResult.rows.length + revokeResult.rows.length
     });
 
   } catch (error) {

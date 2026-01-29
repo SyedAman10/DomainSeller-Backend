@@ -137,23 +137,36 @@ class DomainSyncService {
         
         for (const domainName of newDomains) {
           try {
-            // Insert new domain with registrar verification
-            await query(
-              `INSERT INTO domains 
-                (name, user_id, registrar_account_id, verification_method, verification_level, 
-                 verified_at, auto_synced, last_seen_at, status, created_at, updated_at)
-               VALUES ($1, $2, $3, 'registrar_api', 3, NOW(), true, NOW(), 'Available', NOW(), NOW())
-               ON CONFLICT (name) DO UPDATE SET
-                 user_id = EXCLUDED.user_id,
-                 registrar_account_id = EXCLUDED.registrar_account_id,
-                 verification_method = EXCLUDED.verification_method,
-                 verification_level = EXCLUDED.verification_level,
-                 verified_at = NOW(),
-                 auto_synced = true,
-                 last_seen_at = NOW(),
-                 updated_at = NOW()`,
-              [domainName, account.user_id, registrarAccountId]
+            // Check if domain already exists for this user
+            const existingDomain = await query(
+              `SELECT id FROM domains WHERE user_id = $1 AND name = $2`,
+              [account.user_id, domainName]
             );
+
+            if (existingDomain.rows.length > 0) {
+              // Update existing domain with registrar verification
+              await query(
+                `UPDATE domains 
+                 SET registrar_account_id = $1,
+                     verification_method = 'registrar_api',
+                     verification_level = 3,
+                     verified_at = NOW(),
+                     auto_synced = true,
+                     last_seen_at = NOW(),
+                     updated_at = NOW()
+                 WHERE id = $2`,
+                [registrarAccountId, existingDomain.rows[0].id]
+              );
+            } else {
+              // Insert new domain with registrar verification
+              await query(
+                `INSERT INTO domains 
+                  (name, user_id, registrar_account_id, verification_method, verification_level, 
+                   verified_at, auto_synced, last_seen_at, status, created_at, updated_at)
+                 VALUES ($1, $2, $3, 'registrar_api', 3, NOW(), true, NOW(), 'Available', NOW(), NOW())`,
+                [domainName, account.user_id, registrarAccountId]
+              );
+            }
 
             // Log verification event
             await this.securityServices.logger.logVerification(
