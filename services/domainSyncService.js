@@ -84,18 +84,18 @@ class DomainSyncService {
 
       // 4. Fetch domains from registrar
       console.log(`🌐 Fetching domains from ${account.registrar}...`);
-      
+
       let registrarDomains;
       try {
         registrarDomains = await adapter.fetchDomains();
         stats.found = registrarDomains.length;
         console.log(`✅ Found ${registrarDomains.length} domains on ${account.registrar}`);
-        
+
         // Log detailed information about what we received
         if (registrarDomains.length > 0) {
           console.log('\n📋 DETAILED DOMAIN INFORMATION FROM REGISTRAR:');
           console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          
+
           // Show first 3 domains as examples
           const sampleDomains = registrarDomains.slice(0, 3);
           sampleDomains.forEach((domain, idx) => {
@@ -104,7 +104,7 @@ class DomainSyncService {
               console.log('   Available data:', JSON.stringify(domain, null, 2));
             }
           });
-          
+
           if (registrarDomains.length > 3) {
             console.log(`\n   ... and ${registrarDomains.length - 3} more domains`);
           }
@@ -112,7 +112,7 @@ class DomainSyncService {
         }
       } catch (fetchError) {
         console.error(`❌ Failed to fetch domains:`, fetchError.message);
-        
+
         // Update connection status
         await this.securityServices.credentials.updateConnectionStatus(
           registrarAccountId,
@@ -121,7 +121,7 @@ class DomainSyncService {
         );
 
         stats.errors.push(fetchError.message);
-        
+
         // Log failed sync
         await this.securityServices.logger.logSync(
           registrarAccountId,
@@ -143,7 +143,7 @@ class DomainSyncService {
 
       const dbDomains = dbDomainsResult.rows;
       const dbDomainNames = new Set(dbDomains.map(d => d.name.toLowerCase()));
-      
+
       // Extract domain names (handle both string and object formats)
       const registrarDomainNames = new Set(
         registrarDomains.map(d => {
@@ -151,7 +151,7 @@ class DomainSyncService {
           return name.toLowerCase();
         })
       );
-      
+
       // Create a map of domain name -> full domain data for later use
       const registrarDomainMap = new Map();
       registrarDomains.forEach(d => {
@@ -169,27 +169,27 @@ class DomainSyncService {
 
       if (newDomains.length > 0) {
         console.log(`➕ Adding ${newDomains.length} new domain(s)...`);
-        
+
         for (const domainData of newDomains) {
           try {
             // Extract domain name and data
-            const domainName = typeof domainData === 'string' 
-              ? domainData 
+            const domainName = typeof domainData === 'string'
+              ? domainData
               : (domainData.name || domainData.domain);
-            
+
             // Extract additional domain information
             const expiryDate = domainData.expires ? new Date(domainData.expires) : null;
             const autoRenew = domainData.renewAuto !== undefined ? domainData.renewAuto : true;
             const transferLocked = domainData.locked !== undefined ? domainData.locked : true;
             const registrarName = account.registrar;
-            
+
             console.log(`   📝 Processing: ${domainName}`);
             if (typeof domainData === 'object') {
               console.log(`      Expires: ${expiryDate || 'N/A'}`);
               console.log(`      Auto-renew: ${autoRenew}`);
               console.log(`      Transfer locked: ${transferLocked}`);
             }
-            
+
             // Check if domain already exists for this user
             const existingDomain = await query(
               `SELECT id FROM domains WHERE user_id = $1 AND name = $2`,
@@ -256,19 +256,19 @@ class DomainSyncService {
 
       if (existingDomains.length > 0) {
         console.log(`🔄 Updating ${existingDomains.length} existing domain(s)...`);
-        
+
         for (const domainData of existingDomains) {
           try {
-            const domainName = typeof domainData === 'string' 
-              ? domainData 
+            const domainName = typeof domainData === 'string'
+              ? domainData
               : (domainData.name || domainData.domain);
-            
+
             // Extract additional domain information for update
             const expiryDate = domainData.expires ? new Date(domainData.expires) : null;
             const autoRenew = domainData.renewAuto !== undefined ? domainData.renewAuto : null;
             const transferLocked = domainData.locked !== undefined ? domainData.locked : null;
             const registrarName = account.registrar;
-            
+
             await query(
               `UPDATE domains
                SET last_seen_at = NOW(),
@@ -283,14 +283,14 @@ class DomainSyncService {
 
             stats.updated++;
           } catch (error) {
-            const domainName = typeof domainData === 'string' 
-              ? domainData 
+            const domainName = typeof domainData === 'string'
+              ? domainData
               : (domainData.name || domainData.domain);
             console.error(`   ❌ Failed to update ${domainName}:`, error.message);
             stats.errors.push(`Failed to update ${domainName}: ${error.message}`);
           }
         }
-        
+
         console.log(`   ✅ Updated ${stats.updated} domain(s)`);
       }
 
@@ -301,7 +301,7 @@ class DomainSyncService {
 
       if (removedDomains.length > 0) {
         console.log(`⚠️  Found ${removedDomains.length} domain(s) no longer in ${account.registrar}`);
-        
+
         for (const domain of removedDomains) {
           try {
             // Revoke verification but keep the domain record
@@ -340,7 +340,7 @@ class DomainSyncService {
 
       // 9. Update registrar account sync status
       const syncDuration = Date.now() - startTime;
-      
+
       await query(
         `UPDATE registrar_accounts
          SET last_sync_at = NOW(),
@@ -411,7 +411,7 @@ class DomainSyncService {
 
       // Get all active registrar accounts
       const accountsResult = await query(
-        `SELECT id, user_id, registrar, last_sync_at
+        `SELECT id, user_id, registrar, sync_mode, last_sync_at
          FROM registrar_accounts
          WHERE connection_status = 'active'
          ORDER BY last_sync_at ASC NULLS FIRST`
@@ -429,11 +429,17 @@ class DomainSyncService {
 
       for (const account of accounts) {
         try {
-          console.log(`\n🔄 Syncing account ${account.id} (${account.registrar})...`);
-          const stats = await this.syncRegistrarAccount(account.id);
-          results.push({ accountId: account.id, success: true, stats });
+          if (account.sync_mode === 'verify_only') {
+            console.log(`\n🔄 Verifying existing domains for account ${account.id} (${account.registrar})...`);
+            const stats = await this.verifyExistingDomains(account.id);
+            results.push({ accountId: account.id, success: true, stats, mode: 'verify' });
+          } else {
+            console.log(`\n🔄 Syncing account ${account.id} (${account.registrar})...`);
+            const stats = await this.syncRegistrarAccount(account.id);
+            results.push({ accountId: account.id, success: true, stats, mode: 'sync' });
+          }
         } catch (error) {
-          console.error(`❌ Failed to sync account ${account.id}:`, error.message);
+          console.error(`❌ Action failed for account ${account.id}:`, error.message);
           results.push({ accountId: account.id, success: false, error: error.message });
         }
 
@@ -450,10 +456,10 @@ class DomainSyncService {
       console.log(`   • Total accounts: ${accounts.length}`);
       console.log(`   • Successful: ${results.filter(r => r.success).length}`);
       console.log(`   • Failed: ${results.filter(r => !r.success).length}`);
-      
+
       const totalAdded = results.reduce((sum, r) => sum + (r.stats?.added || 0), 0);
       const totalRemoved = results.reduce((sum, r) => sum + (r.stats?.removed || 0), 0);
-      
+
       console.log(`   • Total new domains: ${totalAdded}`);
       console.log(`   • Total revoked domains: ${totalRemoved}`);
       console.log('════════════════════════════════════════════════════════════');
@@ -483,12 +489,20 @@ class DomainSyncService {
     }
 
     const results = [];
-    
+
     for (const account of accountsResult.rows) {
       try {
-        const stats = await this.syncRegistrarAccount(account.id);
-        results.push({ accountId: account.id, success: true, stats });
+        if (account.sync_mode === 'verify_only') {
+          console.log(`\n🔄 Verifying existing domains for account ${account.id} (User ID: ${userId})...`);
+          const stats = await this.verifyExistingDomains(account.id);
+          results.push({ accountId: account.id, success: true, stats, mode: 'verify' });
+        } else {
+          console.log(`\n🔄 Syncing account ${account.id} (User ID: ${userId})...`);
+          const stats = await this.syncRegistrarAccount(account.id);
+          results.push({ accountId: account.id, success: true, stats, mode: 'sync' });
+        }
       } catch (error) {
+        console.error(`❌ Action failed for account ${account.id}:`, error.message);
         results.push({ accountId: account.id, success: false, error: error.message });
       }
     }
@@ -504,7 +518,7 @@ class DomainSyncService {
       await this.initialize();
 
       const credentials = await this.securityServices.credentials.getCredentials(registrarAccountId);
-      
+
       const accountResult = await query(
         `SELECT registrar FROM registrar_accounts WHERE id = $1`,
         [registrarAccountId]
@@ -542,6 +556,244 @@ class DomainSyncService {
         message: error.message
       };
     }
+  }
+
+  /**
+   * Verify existing domains in database against registrar account
+   * This ONLY verifies domains that are already in the user's portfolio
+   * It does NOT import new domains from the registrar
+   * @param {number} registrarAccountId
+   * @returns {Promise<object>} Verification statistics
+   */
+  async verifyExistingDomains(registrarAccountId) {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`✅ Starting BULK VERIFICATION for account ${registrarAccountId}`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    const stats = {
+      totalInDatabase: 0,
+      verified: 0,
+      notFound: 0,
+      errors: []
+    };
+
+    const startTime = Date.now();
+
+    try {
+      await this.initialize();
+
+      // 1. Get registrar account details
+      const accountResult = await query(
+        `SELECT id, user_id, registrar, connection_status
+         FROM registrar_accounts
+         WHERE id = $1`,
+        [registrarAccountId]
+      );
+
+      if (accountResult.rows.length === 0) {
+        throw new Error('Registrar account not found');
+      }
+
+      const account = accountResult.rows[0];
+
+      if (account.connection_status === 'disconnected') {
+        throw new Error('Account is disconnected');
+      }
+
+      console.log(`📋 Account: ${account.registrar} (User ID: ${account.user_id})`);
+
+      // 2. Get ALL domains for this user from database (not just ones linked to this registrar)
+      const dbDomainsResult = await query(
+        `SELECT id, name, verification_level, registrar_account_id
+         FROM domains
+         WHERE user_id = $1
+         ORDER BY name`,
+        [account.user_id]
+      );
+
+      const dbDomains = dbDomainsResult.rows;
+      stats.totalInDatabase = dbDomains.length;
+
+      console.log(`📊 Found ${dbDomains.length} domain(s) in your portfolio`);
+
+      if (dbDomains.length === 0) {
+        console.log('ℹ️  No domains to verify');
+        return stats;
+      }
+
+      // 3. Get decrypted credentials
+      const credentials = await this.securityServices.credentials.getCredentials(registrarAccountId);
+
+      // 4. Create registrar adapter
+      const adapter = RegistrarAdapterFactory.create(account.registrar, credentials);
+
+      // 5. Fetch domains from registrar
+      console.log(`🌐 Fetching domains from ${account.registrar}...`);
+
+      let registrarDomains;
+      try {
+        registrarDomains = await adapter.fetchDomains();
+        console.log(`✅ Found ${registrarDomains.length} domains on ${account.registrar}`);
+      } catch (fetchError) {
+        console.error(`❌ Failed to fetch domains:`, fetchError.message);
+
+        // Update connection status
+        await this.securityServices.credentials.updateConnectionStatus(
+          registrarAccountId,
+          'failed',
+          fetchError.message
+        );
+
+        throw fetchError;
+      }
+
+      // 6. Create a Set of registrar domain names for quick lookup
+      const registrarDomainNames = new Set(
+        registrarDomains.map(d => {
+          const name = typeof d === 'string' ? d : (d.name || d.domain);
+          return name.toLowerCase();
+        })
+      );
+
+      // Create a map of domain name -> full domain data
+      const registrarDomainMap = new Map();
+      registrarDomains.forEach(d => {
+        const name = typeof d === 'string' ? d : (d.name || d.domain);
+        registrarDomainMap.set(name.toLowerCase(), d);
+      });
+
+      console.log('\n🔍 Verifying domains...\n');
+
+      // 7. Check each database domain against registrar
+      for (const dbDomain of dbDomains) {
+        const domainName = dbDomain.name.toLowerCase();
+
+        if (registrarDomainNames.has(domainName)) {
+          // Domain found in registrar - verify it
+          try {
+            const registrarData = registrarDomainMap.get(domainName);
+
+            // Extract additional domain information
+            const expiryDate = registrarData?.expires ? new Date(registrarData.expires) : null;
+            const autoRenew = registrarData?.renewAuto !== undefined ? registrarData.renewAuto : null;
+            const transferLocked = registrarData?.locked !== undefined ? registrarData.locked : null;
+            const registrarName = account.registrar;
+
+            await query(
+              `UPDATE domains
+               SET registrar_account_id = $1,
+                   verification_method = 'registrar_api',
+                   verification_level = 3,
+                   verified_at = NOW(),
+                   last_seen_at = NOW(),
+                   expiry_date = COALESCE($3, expiry_date),
+                   auto_renew = COALESCE($4, auto_renew),
+                   transfer_locked = COALESCE($5, transfer_locked),
+                   registrar = COALESCE($6, registrar),
+                   updated_at = NOW()
+               WHERE id = $2`,
+              [registrarAccountId, dbDomain.id, expiryDate, autoRenew, transferLocked, registrarName]
+            );
+
+            // Log verification event
+            await this.securityServices.logger.logVerification(
+              dbDomain.name,
+              account.user_id,
+              'verified',
+              {
+                verificationMethod: 'registrar_api',
+                registrarAccountId: registrarAccountId,
+                newStatus: 'verified',
+                reason: `Bulk verified via ${account.registrar} API`
+              }
+            );
+
+            stats.verified++;
+            console.log(`   ✅ ${dbDomain.name} - VERIFIED`);
+          } catch (error) {
+            console.error(`   ❌ ${dbDomain.name} - Error: ${error.message}`);
+            stats.errors.push(`${dbDomain.name}: ${error.message}`);
+          }
+        } else {
+          // Domain NOT found in registrar
+          stats.notFound++;
+          console.log(`   ⚠️  ${dbDomain.name} - NOT FOUND in ${account.registrar}`);
+        }
+      }
+
+      // 8. Update registrar account stats
+      await query(
+        `UPDATE registrar_accounts
+         SET last_sync_at = NOW(),
+             last_sync_status = 'success',
+             last_sync_error = NULL,
+             verified_domains_count = $1,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [stats.verified, registrarAccountId]
+      );
+
+      const duration = Date.now() - startTime;
+
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('✅ BULK VERIFICATION COMPLETED');
+      console.log(`📊 Statistics:`);
+      console.log(`   • Total domains in portfolio: ${stats.totalInDatabase}`);
+      console.log(`   • Verified: ${stats.verified}`);
+      console.log(`   • Not found in ${account.registrar}: ${stats.notFound}`);
+      console.log(`   • Errors: ${stats.errors.length}`);
+      console.log(`   • Duration: ${duration}ms`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+      return stats;
+    } catch (error) {
+      console.error('❌ Bulk verification failed:', error);
+
+      // Update account with error
+      await query(
+        `UPDATE registrar_accounts
+         SET last_sync_status = 'failed',
+             last_sync_error = $1,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [error.message, registrarAccountId]
+      );
+
+      throw error;
+    }
+  }
+
+  /**
+   * Verify existing domains for a specific user across all connected registrars
+   * @param {number} userId
+   * @returns {Promise<Array>} Array of results
+   */
+  async verifyUserDomains(userId) {
+    console.log(`🔄 Verifying existing domains across all accounts for user ${userId}...`);
+
+    const accountsResult = await query(
+      `SELECT id FROM registrar_accounts
+       WHERE user_id = $1 AND connection_status = 'active'`,
+      [userId]
+    );
+
+    if (accountsResult.rows.length === 0) {
+      console.log('ℹ️  No active registrar accounts found for this user');
+      return { message: 'No active registrar accounts', results: [] };
+    }
+
+    const results = [];
+
+    for (const account of accountsResult.rows) {
+      try {
+        const stats = await this.verifyExistingDomains(account.id);
+        results.push({ accountId: account.id, success: true, stats });
+      } catch (error) {
+        results.push({ accountId: account.id, success: false, error: error.message });
+      }
+    }
+
+    return results;
   }
 
   /**

@@ -68,28 +68,29 @@ router.post('/connect', requireAuth, async (req, res) => {
 
     // Step 1: Store encrypted credentials
     const services = getSecurityServices();
-    
+
     const accountId = await services.credentials.storeCredentials(
       req.user.id,
       registrar,
       apiKey,
-      apiSecret
+      apiSecret,
+      req.body.verifyOnly ? 'verify_only' : 'full'
     );
 
     console.log(`✅ Credentials stored securely (Account ID: ${accountId})`);
 
     // Step 2: Test connection
     console.log(`🔍 Testing connection to ${registrar}...`);
-    
+
     const credentials = { apiKey, apiSecret, username, clientIp };
     const adapter = RegistrarAdapterFactory.create(registrar, credentials);
-    
+
     const connectionTest = await adapter.testConnection();
 
     if (!connectionTest.success) {
       // Connection failed - mark as failed and return error
       await services.credentials.updateConnectionStatus(accountId, 'failed', connectionTest.message);
-      
+
       return res.status(400).json({
         success: false,
         message: 'Failed to connect to registrar',
@@ -106,22 +107,35 @@ router.post('/connect', requireAuth, async (req, res) => {
     // Step 3: Update status to active
     await services.credentials.updateConnectionStatus(accountId, 'active', null);
 
-    // Step 4: Trigger initial domain sync (async)
-    console.log(`🔄 Starting initial domain sync...`);
-    
-    // Run sync in background
-    domainSyncService.syncRegistrarAccount(accountId)
-      .then(stats => {
-        console.log(`✅ Initial sync completed for account ${accountId}:`, stats);
-      })
-      .catch(err => {
-        console.error(`❌ Initial sync failed for account ${accountId}:`, err);
-      });
+    // Step 4: Trigger initial action (async)
+    const { verifyOnly } = req.body;
+
+    if (verifyOnly) {
+      console.log(`🔄 Starting initial domain verification (no import)...`);
+      domainSyncService.verifyExistingDomains(accountId)
+        .then(stats => {
+          console.log(`✅ Initial verification completed for account ${accountId}:`, stats);
+        })
+        .catch(err => {
+          console.error(`❌ Initial verification failed for account ${accountId}:`, err);
+        });
+    } else {
+      console.log(`🔄 Starting initial domain sync (full import)...`);
+      domainSyncService.syncRegistrarAccount(accountId)
+        .then(stats => {
+          console.log(`✅ Initial sync completed for account ${accountId}:`, stats);
+        })
+        .catch(err => {
+          console.error(`❌ Initial sync failed for account ${accountId}:`, err);
+        });
+    }
 
     // Return success immediately (don't wait for sync to complete)
     res.json({
       success: true,
-      message: `Successfully connected ${registrar} account`,
+      message: verifyOnly
+        ? `Successfully connected ${registrar} account (Verification in progress)`
+        : `Successfully connected ${registrar} account (Sync in progress)`,
       accountId: accountId,
       registrar: registrar,
       domainsCount: connectionTest.accountInfo?.domainsCount || 0,
@@ -255,10 +269,79 @@ router.post('/sync', requireAuth, async (req, res) => {
     if (!accountId) {
       console.log(`🔄 Syncing all accounts for user ${req.user.id}...`);
       const results = await domainSyncService.syncUserDomains(req.user.id);
-      
+
       return res.json({
         success: true,
         message: 'Sync completed for all accounts',
+        results: results
+      });
+    }
+
+    // Verify ownership and get sync mode
+    const ownershipCheck = await query(
+      `SELECT id, sync_mode FROM registrar_accounts WHERE id = $1 AND user_id = $2`,
+      [accountId, req.user.id]
+    );
+
+    if (ownershipCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registrar account not found or access denied'
+      });
+    }
+
+    const { sync_mode } = ownershipCheck.rows[0];
+
+    // Trigger appropriate action
+    let stats;
+    if (sync_mode === 'verify_only') {
+      console.log(`🔄 Starting manual verification for account ${accountId}...`);
+      stats = await domainSyncService.verifyExistingDomains(accountId);
+    } else {
+      console.log(`🔄 Starting manual sync for account ${accountId}...`);
+      stats = await domainSyncService.syncRegistrarAccount(accountId);
+    }
+
+    res.json({
+      success: true,
+      message: sync_mode === 'verify_only' ? 'Domain verification completed' : 'Domain sync completed',
+      stats: stats
+    });
+
+  } catch (error) {
+    console.error('❌ Error syncing domains:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync domains',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * ============================================================
+ * POST /backend/registrar/verify
+ * Verify existing domains against registrar (Bulk Verification)
+ * Does NOT import new domains, only verifies ownership of existing ones
+ * ============================================================
+ */
+router.post('/verify', requireAuth, async (req, res) => {
+  console.log('============================================================');
+  console.log('📥 POST /backend/registrar/verify');
+  console.log(`👤 User ID: ${req.user.id}`);
+  console.log('============================================================');
+
+  try {
+    const { accountId } = req.body;
+
+    // If no accountId provided, verify all accounts for this user
+    if (!accountId) {
+      console.log(`🔄 Verifying all accounts for user ${req.user.id}...`);
+      const results = await domainSyncService.verifyUserDomains(req.user.id);
+
+      return res.json({
+        success: true,
+        message: 'Verification completed for all accounts',
         results: results
       });
     }
@@ -276,21 +359,21 @@ router.post('/sync', requireAuth, async (req, res) => {
       });
     }
 
-    // Trigger sync
-    console.log(`🔄 Starting manual sync for account ${accountId}...`);
-    const stats = await domainSyncService.syncRegistrarAccount(accountId);
+    // Trigger verification
+    console.log(`🔄 Starting bulk verification for account ${accountId}...`);
+    const stats = await domainSyncService.verifyExistingDomains(accountId);
 
     res.json({
       success: true,
-      message: 'Domain sync completed',
+      message: 'Domain verification completed',
       stats: stats
     });
 
   } catch (error) {
-    console.error('❌ Error syncing domains:', error);
+    console.error('❌ Error verifying domains:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to sync domains',
+      message: 'Failed to verify domains',
       error: error.message
     });
   }
@@ -335,7 +418,7 @@ router.delete('/disconnect', requireAuth, async (req, res) => {
 
     // Step 1: Delete auto-synced domains (to prevent duplicates)
     console.log(`🗑️  Deleting auto-synced domains from ${registrar}...`);
-    
+
     const deleteResult = await query(
       `DELETE FROM domains
        WHERE registrar_account_id = $1 AND auto_synced = true
@@ -361,7 +444,7 @@ router.delete('/disconnect', requireAuth, async (req, res) => {
 
     // Step 3: Log deletion and revocation events
     const services = getSecurityServices();
-    
+
     // Log deletions
     for (const domain of deleteResult.rows) {
       await services.logger.logVerification(
@@ -377,7 +460,7 @@ router.delete('/disconnect', requireAuth, async (req, res) => {
         }
       );
     }
-    
+
     // Log revocations for manually-added domains
     for (const domain of revokeResult.rows) {
       await services.logger.logVerification(
@@ -426,7 +509,7 @@ router.delete('/disconnect', requireAuth, async (req, res) => {
 router.get('/supported', async (req, res) => {
   try {
     const registrars = RegistrarAdapterFactory.getSupportedRegistrars();
-    
+
     res.json({
       success: true,
       registrars: registrars

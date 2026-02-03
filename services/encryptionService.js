@@ -16,14 +16,14 @@ class EncryptionService {
   constructor() {
     // Get encryption key from environment variable
     this.encryptionKey = process.env.ENCRYPTION_KEY;
-    
+
     if (!this.encryptionKey) {
       throw new Error('ENCRYPTION_KEY environment variable is not set!');
     }
 
     // Ensure key is 32 bytes for AES-256
     this.key = this.deriveKey(this.encryptionKey);
-    
+
     // Algorithm configuration
     this.algorithm = 'aes-256-gcm';
     this.ivLength = 16; // Initialization vector length
@@ -167,9 +167,9 @@ class RegistrarCredentialsService {
   /**
    * Store registrar credentials securely
    */
-  async storeCredentials(userId, registrar, apiKey, apiSecret) {
+  async storeCredentials(userId, registrar, apiKey, apiSecret, syncMode = 'full') {
     try {
-      console.log(`🔐 Encrypting credentials for ${registrar}...`);
+      console.log(`🔐 Encrypting credentials for ${registrar} (Mode: ${syncMode})...`);
 
       // Encrypt credentials
       const encryptedKey = this.encryption.encrypt(apiKey);
@@ -178,20 +178,21 @@ class RegistrarCredentialsService {
       // Store in database
       const result = await this.db.query(
         `INSERT INTO registrar_accounts 
-          (user_id, registrar, encrypted_api_key, encrypted_api_secret, connection_status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'pending', NOW(), NOW())
+          (user_id, registrar, encrypted_api_key, encrypted_api_secret, connection_status, sync_mode, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'pending', $5, NOW(), NOW())
          ON CONFLICT (user_id, registrar) 
          DO UPDATE SET 
            encrypted_api_key = EXCLUDED.encrypted_api_key,
            encrypted_api_secret = EXCLUDED.encrypted_api_secret,
            connection_status = 'pending',
+           sync_mode = COALESCE($5, registrar_accounts.sync_mode),
            updated_at = NOW()
          RETURNING id`,
-        [userId, registrar.toLowerCase(), encryptedKey, encryptedSecret]
+        [userId, registrar.toLowerCase(), encryptedKey, encryptedSecret, syncMode]
       );
 
       console.log(`✅ Credentials stored securely (Account ID: ${result.rows[0].id})`);
-      
+
       return result.rows[0].id;
     } catch (error) {
       console.error('❌ Error storing credentials:', error);
@@ -219,7 +220,7 @@ class RegistrarCredentialsService {
 
       // Decrypt credentials
       const apiKey = this.encryption.decrypt(account.encrypted_api_key);
-      const apiSecret = account.encrypted_api_secret 
+      const apiSecret = account.encrypted_api_secret
         ? this.encryption.decrypt(account.encrypted_api_secret)
         : null;
 
@@ -331,7 +332,7 @@ class SecurityLogger {
   async logSync(registrarAccountId, status, stats, error = null) {
     try {
       const startTime = Date.now();
-      
+
       await this.db.query(
         `INSERT INTO registrar_sync_history
           (registrar_account_id, sync_status, domains_found, domains_added, 
@@ -387,11 +388,11 @@ function initializeSecurityServices(db) {
   if (!encryptionService) {
     encryptionService = new EncryptionService();
   }
-  
+
   if (!credentialsService) {
     credentialsService = new RegistrarCredentialsService(encryptionService, db);
   }
-  
+
   if (!securityLogger) {
     securityLogger = new SecurityLogger(db);
   }
