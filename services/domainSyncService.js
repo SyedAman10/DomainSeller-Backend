@@ -67,6 +67,10 @@ class DomainSyncService {
       }
 
       const account = accountResult.rows[0];
+      const accountSyncMode = (account.sync_mode || 'full').trim().toLowerCase();
+
+      console.log(`📋 Account: ${account.registrar} (User ID: ${account.user_id}) (Stored Mode: ${account.sync_mode})`);
+      console.log(`⚙️  Active Sync Mode: ${accountSyncMode}`);
 
       if (account.connection_status === 'disconnected') {
         console.log('⚠️  Account is disconnected, skipping sync');
@@ -74,12 +78,11 @@ class DomainSyncService {
       }
 
       // If sync_mode is verify_only, divert to verification service
-      if (account.sync_mode === 'verify_only') {
-        console.log(`ℹ️  Account is in verify_only mode. Diverted to verification...`);
+      if (accountSyncMode === 'verify_only' || accountSyncMode === 'verify') {
+        console.log(`ℹ️  Diverting to verification service (User only wants to match existing domains)`);
         return await this.verifyExistingDomains(registrarAccountId);
       }
 
-      console.log(`📋 Account: ${account.registrar} (User ID: ${account.user_id}) (Mode: ${account.sync_mode})`);
       console.log(`📅 Last sync: ${account.last_sync_at || 'Never'}`);
 
       // 2. Get decrypted credentials

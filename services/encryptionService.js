@@ -167,7 +167,7 @@ class RegistrarCredentialsService {
   /**
    * Store registrar credentials securely
    */
-  async storeCredentials(userId, registrar, apiKey, apiSecret, syncMode = 'full') {
+  async storeCredentials(userId, registrar, apiKey, apiSecret, syncMode = 'verify_only') {
     try {
       console.log(`🔐 Encrypting credentials for ${registrar} (Mode: ${syncMode})...`);
 

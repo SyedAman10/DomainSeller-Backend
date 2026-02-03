@@ -69,12 +69,14 @@ router.post('/connect', requireAuth, async (req, res) => {
     // Step 1: Store encrypted credentials
     const services = getSecurityServices();
 
+    const syncMode = req.body.syncMode || (req.body.verifyOnly === false ? 'full' : 'verify_only');
+
     const accountId = await services.credentials.storeCredentials(
       req.user.id,
       registrar,
       apiKey,
       apiSecret,
-      req.body.verifyOnly ? 'verify_only' : 'full'
+      syncMode
     );
 
     console.log(`✅ Credentials stored securely (Account ID: ${accountId})`);
@@ -108,9 +110,7 @@ router.post('/connect', requireAuth, async (req, res) => {
     await services.credentials.updateConnectionStatus(accountId, 'active', null);
 
     // Step 4: Trigger initial action (async)
-    const { verifyOnly } = req.body;
-
-    if (verifyOnly) {
+    if (syncMode === 'verify_only') {
       console.log(`🔄 Starting initial domain verification (no import)...`);
       domainSyncService.verifyExistingDomains(accountId)
         .then(stats => {
@@ -133,7 +133,7 @@ router.post('/connect', requireAuth, async (req, res) => {
     // Return success immediately (don't wait for sync to complete)
     res.json({
       success: true,
-      message: verifyOnly
+      message: syncMode === 'verify_only'
         ? `Successfully connected ${registrar} account (Verification in progress)`
         : `Successfully connected ${registrar} account (Sync in progress)`,
       accountId: accountId,
