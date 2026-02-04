@@ -381,6 +381,21 @@ router.post('/verify', requireAuth, async (req, res) => {
 
 /**
  * ============================================================
+ * GET /backend/registrar/verify
+ * Debug endpoint to confirm route availability
+ * ============================================================
+ */
+router.get('/verify', (req, res) => {
+  res.status(405).json({
+    success: false,
+    message: 'Method Not Allowed. Use POST to verify domains.',
+    hint: 'This endpoint requires a POST request with { accountId } in the body.',
+    status: 'active'
+  });
+});
+
+/**
+ * ============================================================
  * DELETE /backend/registrar/disconnect
  * Disconnect a registrar account
  * ============================================================

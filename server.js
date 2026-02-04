@@ -64,7 +64,7 @@ app.use(cors({
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin) || origin.endsWith('.3vltn.com') || origin === 'https://3vltn.com') {
       console.log(`   ✅ Allowed: ${origin} is in whitelist`);
       callback(null, true);
     } else {
