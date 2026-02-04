@@ -125,25 +125,25 @@ class GoDaddyAdapter extends RegistrarAdapter {
         if (response.status === 400 && errorData.code === 'UNABLE_TO_AUTHENTICATE') {
           errorMessage = 'GoDaddy API authentication failed - credentials format is incorrect';
           hint = 'Common issues:\n' +
-                 '1. API key/secret format is wrong (check for extra spaces)\n' +
-                 '2. Using PRODUCTION keys with OTE environment (or vice versa)\n' +
-                 '3. Key/secret are swapped\n\n' +
-                 'Current environment: ' + this.baseUrl + '\n' +
-                 'Make sure your keys match this environment:\n' +
-                 '- OTE keys → https://api.ote-godaddy.com\n' +
-                 '- Production keys → https://api.godaddy.com';
+            '1. API key/secret format is wrong (check for extra spaces)\n' +
+            '2. Using PRODUCTION keys with OTE environment (or vice versa)\n' +
+            '3. Key/secret are swapped\n\n' +
+            'Current environment: ' + this.baseUrl + '\n' +
+            'Make sure your keys match this environment:\n' +
+            '- OTE keys → https://api.ote-godaddy.com\n' +
+            '- Production keys → https://api.godaddy.com';
         } else if (response.status === 403) {
           errorMessage = 'GoDaddy API credentials are invalid or do not have permission';
           hint = 'MOST COMMON ISSUE: GoDaddy requires 10+ domains OR Domain Pro Plan for API access!\n\n' +
-                 'Solutions:\n' +
-                 '1. Use OTE/Test environment (no restrictions):\n' +
-                 '   - Set GODADDY_API_URL=https://api.ote-godaddy.com in .env\n' +
-                 '   - Use TEST API keys\n' +
-                 '2. For Production:\n' +
-                 '   - Add 10+ domains to your account, OR\n' +
-                 '   - Subscribe to "Discount Domain Club - Domain Pro Plan"\n' +
-                 '3. Verify your API key has "Domain" permissions\n' +
-                 '4. Consider using Cloudflare or Namecheap (no minimums)';
+            'Solutions:\n' +
+            '1. Use OTE/Test environment (no restrictions):\n' +
+            '   - Set GODADDY_API_URL=https://api.ote-godaddy.com in .env\n' +
+            '   - Use TEST API keys\n' +
+            '2. For Production:\n' +
+            '   - Add 10+ domains to your account, OR\n' +
+            '   - Subscribe to "Discount Domain Club - Domain Pro Plan"\n' +
+            '3. Verify your API key has "Domain" permissions\n' +
+            '4. Consider using Cloudflare or Namecheap (no minimums)';
         } else if (response.status === 401) {
           errorMessage = 'GoDaddy API authentication failed';
           hint = 'Your API key or secret is incorrect. Please check your GoDaddy API credentials.';
@@ -163,7 +163,7 @@ class GoDaddyAdapter extends RegistrarAdapter {
       }
 
       const domains = await response.json();
-      
+
       return {
         success: true,
         message: 'GoDaddy connection successful',
@@ -182,46 +182,62 @@ class GoDaddyAdapter extends RegistrarAdapter {
   }
 
   /**
-   * Fetch all domains from GoDaddy account
+   * Fetch all domains from GoDaddy account with pagination
    */
   async fetchDomains() {
     try {
-      console.log('🔍 Fetching domains from GoDaddy...');
-      
-      const response = await fetch(`${this.baseUrl}/v1/domains`, {
-        method: 'GET',
-        headers: {
-          'Authorization': this.getAuthHeader(),
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+      console.log('🔍 Fetching all domains from GoDaddy (with pagination)...');
+
+      let allDomains = [];
+      let marker = null;
+      let hasMore = true;
+      const limit = 500; // GoDaddy maximum limit is usually 1000, 500 is safer
+
+      while (hasMore) {
+        let url = `${this.baseUrl}/v1/domains?limit=${limit}`;
+        if (marker) {
+          url += `&marker=${marker}`;
         }
-      });
 
-      if (!response.ok) {
-        throw new Error(`GoDaddy API error: ${response.status}`);
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': this.getAuthHeader(),
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`GoDaddy API error: ${response.status} - ${errorText}`);
+        }
+
+        const domains = await response.json();
+
+        if (domains && domains.length > 0) {
+          allDomains = allDomains.concat(domains);
+
+          if (domains.length === limit) {
+            // Use the last domain name as the marker for the next page
+            marker = domains[domains.length - 1].domain;
+            console.log(`   ⏳ Fetched ${allDomains.length} domains so far, fetching more...`);
+          } else {
+            hasMore = false;
+          }
+        } else {
+          hasMore = false;
+        }
       }
 
-      const domains = await response.json();
-      
-      // Log sample of what we receive (first domain)
-      if (domains.length > 0) {
-        console.log('📋 Sample domain data from GoDaddy API:');
-        console.log(JSON.stringify(domains[0], null, 2));
-        console.log('📋 Available fields:', Object.keys(domains[0]).join(', '));
-      }
-      
-      // GoDaddy returns array of domain objects with properties like:
-      // - domain (name)
-      // - status (ACTIVE, EXPIRED, etc.)
-      // - expires (expiry date)
-      // - locked (transfer lock status)
-      // - privacy (WHOIS privacy status)
-      // - renewAuto (auto-renewal status)
-      // - etc.
-      
-      // Return full domain objects, not just names
-      const activeDomains = domains
-        .filter(d => d.status === 'ACTIVE') // Only active domains
+      console.log(`✅ Total domains received from GoDaddy: ${allDomains.length}`);
+
+      // Filter domains. We want most statuses except deeply inactive ones.
+      // GoDaddy statuses include: ACTIVE, EXPIRED, PENDING_DNS, PENDING_REGISTRATION, etc.
+      const excludedStatuses = ['CANCELLED', 'TRANSFERRED_OUT'];
+
+      const filteredDomains = allDomains
+        .filter(d => d.status && !excludedStatuses.includes(d.status.toUpperCase()))
         .map(d => ({
           name: this.normalizeDomain(d.domain),
           status: d.status,
@@ -229,17 +245,16 @@ class GoDaddyAdapter extends RegistrarAdapter {
           locked: d.locked,
           privacy: d.privacy,
           renewAuto: d.renewAuto,
-          // Include all other fields
           ...d
         }));
 
-      console.log(`✅ Found ${activeDomains.length} active domains on GoDaddy`);
-      console.log(`📊 Domain statuses:`, domains.reduce((acc, d) => {
+      console.log(`✅ Found ${filteredDomains.length} eligible domains on GoDaddy`);
+      console.log(`📊 Domain statuses:`, allDomains.reduce((acc, d) => {
         acc[d.status] = (acc[d.status] || 0) + 1;
         return acc;
       }, {}));
-      
-      return activeDomains;
+
+      return filteredDomains;
     } catch (error) {
       console.error('❌ GoDaddy fetch error:', error);
       throw error;
@@ -325,7 +340,7 @@ class CloudflareAdapter extends RegistrarAdapter {
       }
 
       const data = await response.json();
-      
+
       return {
         success: true,
         message: 'Cloudflare connection successful',
@@ -349,7 +364,7 @@ class CloudflareAdapter extends RegistrarAdapter {
   async fetchDomains() {
     try {
       console.log('🔍 Fetching domains from Cloudflare...');
-      
+
       let allDomains = [];
       let page = 1;
       let hasMore = true;
@@ -372,14 +387,14 @@ class CloudflareAdapter extends RegistrarAdapter {
         }
 
         const data = await response.json();
-        
+
         if (data.success && data.result) {
           const domainNames = data.result
             .filter(zone => zone.status === 'active')
             .map(zone => this.normalizeDomain(zone.name));
-          
+
           allDomains = allDomains.concat(domainNames);
-          
+
           // Check if there are more pages
           const totalPages = Math.ceil(data.result_info.total_count / perPage);
           hasMore = page < totalPages;
@@ -390,7 +405,7 @@ class CloudflareAdapter extends RegistrarAdapter {
       }
 
       console.log(`✅ Found ${allDomains.length} active domains on Cloudflare`);
-      
+
       return allDomains;
     } catch (error) {
       console.error('❌ Cloudflare fetch error:', error);
@@ -455,7 +470,7 @@ class NamecheapAdapter extends RegistrarAdapter {
   async testConnection() {
     try {
       const url = this.buildRequestUrl('namecheap.domains.getList', { PageSize: 1 });
-      
+
       const response = await fetch(url, {
         method: 'GET'
       });
@@ -470,7 +485,7 @@ class NamecheapAdapter extends RegistrarAdapter {
 
       const text = await response.text();
       const isSuccess = text.includes('Status="OK"');
-      
+
       return {
         success: isSuccess,
         message: isSuccess ? 'Namecheap connection successful' : 'Authentication failed',
@@ -493,7 +508,7 @@ class NamecheapAdapter extends RegistrarAdapter {
   async fetchDomains() {
     try {
       console.log('🔍 Fetching domains from Namecheap...');
-      
+
       let allDomains = [];
       let page = 1;
       const pageSize = 100;
@@ -506,13 +521,13 @@ class NamecheapAdapter extends RegistrarAdapter {
         });
 
         const response = await fetch(url);
-        
+
         if (!response.ok) {
           throw new Error(`Namecheap API error: ${response.status}`);
         }
 
         const domains = await this.parseXmlResponse(response);
-        
+
         if (domains.length > 0) {
           allDomains = allDomains.concat(domains.map(d => this.normalizeDomain(d)));
           page++;
@@ -523,7 +538,7 @@ class NamecheapAdapter extends RegistrarAdapter {
       }
 
       console.log(`✅ Found ${allDomains.length} domains on Namecheap`);
-      
+
       return allDomains;
     } catch (error) {
       console.error('❌ Namecheap fetch error:', error);
@@ -558,15 +573,15 @@ class RegistrarAdapterFactory {
     switch (normalizedCode) {
       case 'godaddy':
         return new GoDaddyAdapter(credentials);
-      
+
       case 'cloudflare':
         return new CloudflareAdapter(credentials);
-      
+
       case 'namecheap':
         return new NamecheapAdapter(credentials);
-      
+
       // Add more registrars here as needed
-      
+
       default:
         throw new Error(`Unsupported registrar: ${registrarCode}`);
     }
