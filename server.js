@@ -83,6 +83,9 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
+// Enable pre-flight requests for all routes
+app.options('*', cors());
+
 // CORS debugging middleware
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') {
@@ -212,9 +215,15 @@ app.use((req, res) => {
   console.error(`   Origin: ${req.headers.origin}`);
   console.error(`   Full URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`);
 
+  if (req.path.startsWith('/backend/registrar') && !registrarRoutes) {
+    console.error('⚠️  Registrar routes requested but module failed to load');
+  }
+
   res.status(404).json({
     error: 'Not Found',
-    message: 'The requested endpoint does not exist',
+    message: req.path.startsWith('/backend/registrar') && !registrarRoutes 
+      ? 'Registrar integration is currently unavailable (module failed to load)' 
+      : 'The requested endpoint does not exist',
     path: req.path,
     method: req.method,
     availableRoutes: [

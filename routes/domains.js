@@ -222,7 +222,7 @@ router.post('/add', async (req, res) => {
     const result = await query(
       `INSERT INTO domains 
         (user_id, name, value, category, keywords, registrar, registrar_url, 
-         expiry_date, auto_renew, verification_code, status, transfer_locked, 
+         expiry_date, auto_renew, verification_token, status, transfer_locked, 
          created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Available', true, NOW(), NOW())
        RETURNING *`,
@@ -248,7 +248,7 @@ router.post('/add', async (req, res) => {
       domain: result.rows[0],
       nextSteps: {
         verifyOwnership: true,
-        verificationCode,
+        verificationToken: verificationCode,
         instructions: [
           'Add a TXT record to your domain\'s DNS:',
           `Name: @`,
@@ -294,7 +294,7 @@ router.post('/:domainId/verify', async (req, res) => {
 
     const domain = domainResult.rows[0];
 
-    if (domain.ownership_verified) {
+    if (domain.is_verified) {
       return res.json({
         success: true,
         message: 'Domain is already verified',
@@ -306,14 +306,14 @@ router.post('/:domainId/verify', async (req, res) => {
     // Verify ownership
     const verificationResult = await verifyDomainOwnership(
       domain.name,
-      domain.verification_code
+      domain.verification_token
     );
 
     if (verificationResult.verified) {
       // Update domain as verified
       await query(
         `UPDATE domains 
-         SET ownership_verified = true, verified_at = NOW(), updated_at = NOW()
+         SET is_verified = true, verified_at = NOW(), updated_at = NOW()
          WHERE id = $1`,
         [domainId]
       );
@@ -424,7 +424,7 @@ router.post('/:domainId/check-transfer-ready', async (req, res) => {
 
     const domain = domainResult.rows[0];
     const checks = {
-      ownershipVerified: domain.ownership_verified,
+      ownershipVerified: domain.is_verified,
       transferLockDisabled: false,
       hasAuthCode: !!domain.auth_code,
       isAvailable: domain.status === 'Available'
@@ -735,7 +735,7 @@ router.get('/user/:userId', async (req, res) => {
     }
 
     if (verified !== undefined) {
-      queryText += ` AND ownership_verified = $${queryParams.length + 1}`;
+      queryText += ` AND is_verified = $${queryParams.length + 1}`;
       queryParams.push(verified === 'true');
     }
 

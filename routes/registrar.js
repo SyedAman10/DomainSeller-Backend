@@ -547,7 +547,7 @@ router.get('/stats', requireAuth, async (req, res) => {
           ra.last_sync_at,
           ra.last_sync_status,
           COUNT(d.id) as total_domains,
-          COUNT(CASE WHEN d.verification_status = 'verified' THEN 1 END) as verified_domains
+          COUNT(CASE WHEN d.is_verified = true THEN 1 END) as verified_domains
         FROM registrar_accounts ra
         LEFT JOIN domains d ON d.registrar_account_id = ra.id
         WHERE ra.id = $1 AND ra.user_id = $2
@@ -565,7 +565,7 @@ router.get('/stats', requireAuth, async (req, res) => {
           ra.last_sync_at,
           ra.last_sync_status,
           COUNT(d.id) as total_domains,
-          COUNT(CASE WHEN d.verification_status = 'verified' THEN 1 END) as verified_domains
+          COUNT(CASE WHEN d.is_verified = true THEN 1 END) as verified_domains
         FROM registrar_accounts ra
         LEFT JOIN domains d ON d.registrar_account_id = ra.id
         WHERE ra.user_id = $1
