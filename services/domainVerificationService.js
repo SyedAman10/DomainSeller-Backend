@@ -164,7 +164,7 @@ class DomainVerificationService {
            d.id,
            d.verification_method,
            d.verification_level,
-           d.verification_status,
+           d.is_verified,
            d.verified_at,
            ra.registrar
          FROM domains d
@@ -172,7 +172,7 @@ class DomainVerificationService {
          WHERE d.name = $1 
            AND d.user_id = $2
            AND d.verification_method = 'registrar_api'
-           AND d.verification_status = 'verified'`,
+           AND d.is_verified = true`,
         [domainName, userId]
       );
 
@@ -273,14 +273,13 @@ class DomainVerificationService {
       // Upsert domain with verification info
       const result = await query(
         `INSERT INTO domains 
-          (name, user_id, verification_method, verification_level, verification_status, is_verified,
+          (name, user_id, verification_method, verification_level, is_verified,
            verified_at, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'verified', true, NOW(), 'Available', NOW(), NOW())
+         VALUES ($1, $2, $3, $4, true, NOW(), 'Available', NOW(), NOW())
          ON CONFLICT (name) DO UPDATE SET
            user_id = EXCLUDED.user_id,
            verification_method = EXCLUDED.verification_method,
            verification_level = EXCLUDED.verification_level,
-           verification_status = 'verified',
            is_verified = true,
            verified_at = NOW(),
            updated_at = NOW()
@@ -374,7 +373,7 @@ class DomainVerificationService {
    */
   async canPerformAction(domainName, userId, requiredLevel = 1) {
     const result = await query(
-      `SELECT verification_level, verification_status
+      `SELECT verification_level, is_verified
        FROM domains
        WHERE name = $1 AND user_id = $2`,
       [domainName, userId]
@@ -384,9 +383,9 @@ class DomainVerificationService {
       return { allowed: false, reason: 'Domain not found or not owned by user' };
     }
 
-    const { verification_level, verification_status } = result.rows[0];
+    const { verification_level, is_verified } = result.rows[0];
 
-    if (verification_status !== 'verified') {
+    if (!is_verified) {
       return { allowed: false, reason: 'Domain verification expired or revoked' };
     }
 
