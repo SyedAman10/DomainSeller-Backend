@@ -67,28 +67,31 @@ async function generateLeads(options) {
     // Step 1: Check database for existing leads matching this keyword
     if (!forceRefresh) {
       console.log('\n🔍 STEP 1: Checking database for existing leads...');
-      
+
       const cachedLeads = await searchCachedLeads({
         keyword,
         location,
         industry,
-        limit: count,
-        userId  // Pass userId to filter cache by user
+        limit: 100, // Search more than requested to allow rotation
+        userId
       });
 
-      if (cachedLeads.length >= count) {
+      // If we have leads for this keyword, and the user only asked for a small amount,
+      // we can return them from cache. However, if they want "freshness" or more than we have, we scrape.
+      if (cachedLeads.length >= count && cachedLeads.length > 0) {
         console.log('\n✅ CACHE HIT - Sufficient leads found!');
         console.log('┌─────────────────────────────────────────────────────────────────┐');
-        console.log(`│ Found: ${cachedLeads.length} cached leads (need: ${count})`);
-        console.log('│ Result: Returning from cache (NO SCRAPING NEEDED) 🎉');
-        console.log('│ Cost: $0.00');
+        console.log(`│ Found: ${cachedLeads.length} cached leads (requested: ${count})`);
+        console.log('│ Result: Returning from cache 🎉');
         console.log('└─────────────────────────────────────────────────────────────────┘');
-        console.log('━'.repeat(80) + '\n');
-        
+
+        // Randomize the order a bit so same keyword doesn't always return same leads if we have more than count
+        const shuffled = [...cachedLeads].sort(() => 0.5 - Math.random());
+
         return {
           success: true,
           source: 'cache',
-          leads: cachedLeads.slice(0, count),
+          leads: shuffled.slice(0, count),
           totalFound: cachedLeads.length,
           requested: count,
           fromCache: cachedLeads.length,
@@ -99,38 +102,30 @@ async function generateLeads(options) {
         console.log('┌─────────────────────────────────────────────────────────────────┐');
         console.log(`│ Found: ${cachedLeads.length} cached leads (need: ${count})`);
         console.log(`│ Missing: ${count - cachedLeads.length} leads`);
-        console.log('│ Result: Will scrape remaining leads');
+        console.log('│ Result: Will scrape additional leads to reach target');
         console.log('└─────────────────────────────────────────────────────────────────┘');
-        
-        // Return partial cached results and scrape the rest
-        const remainingCount = count - cachedLeads.length;
-        console.log(`\n🕷️  STEP 2: Scraping ${remainingCount} additional leads...`);
-        
+
+        // Scrape more to ensure we get NEW leads
+        const scrapeCount = Math.max(count, 10); // Scrape at least 10 to rotate
         const scrapedLeads = await scrapeLeads({
           keyword,
           location,
           industry,
-          count: remainingCount,
+          count: scrapeCount,
           actor,
-          userId  // Pass userId for partial scraping
+          userId
         });
 
-        // Combine cached + scraped
+        // Combine and return
         const allLeads = [...cachedLeads, ...scrapedLeads];
-        
-        console.log('\n✅ HYBRID RESULT:');
-        console.log('┌─────────────────────────────────────────────────────────────────┐');
-        console.log(`│ From Cache: ${cachedLeads.length} leads`);
-        console.log(`│ From Scraping: ${scrapedLeads.length} leads`);
-        console.log(`│ Total: ${allLeads.length} leads`);
-        console.log('└─────────────────────────────────────────────────────────────────┘');
-        console.log('━'.repeat(80) + '\n');
-        
+        // Deduplicate by ID in case any were returned by both
+        const uniqueLeads = Array.from(new Map(allLeads.map(l => [l.id, l])).values());
+
         return {
           success: true,
           source: 'hybrid',
-          leads: allLeads.slice(0, count),
-          totalFound: allLeads.length,
+          leads: uniqueLeads.slice(0, count),
+          totalFound: uniqueLeads.length,
           requested: count,
           fromCache: cachedLeads.length,
           fromScraping: scrapedLeads.length,
@@ -138,10 +133,6 @@ async function generateLeads(options) {
         };
       } else {
         console.log('\n❌ CACHE MISS - No cached leads found');
-        console.log('┌─────────────────────────────────────────────────────────────────┐');
-        console.log('│ Found: 0 cached leads');
-        console.log('│ Result: Will scrape all leads from Apify');
-        console.log('└─────────────────────────────────────────────────────────────────┘');
       }
     } else {
       console.log('\n🔄 FORCE REFRESH - Skipping cache check');
@@ -149,7 +140,7 @@ async function generateLeads(options) {
 
     // Step 2: No cached leads found or force refresh - scrape new leads
     console.log('\n🕷️  STEP 2: Starting fresh scraping...');
-    
+
     const scrapedLeads = await scrapeLeads({
       keyword,
       location,
@@ -236,8 +227,8 @@ async function searchCachedLeads(filters) {
       paramIndex++;
     }
 
-    const whereClause = whereConditions.length > 0 
-      ? `WHERE ${whereConditions.join(' AND ')}` 
+    const whereClause = whereConditions.length > 0
+      ? `WHERE ${whereConditions.join(' AND ')}`
       : '';
 
     params.push(limit);
@@ -356,7 +347,7 @@ async function scrapeLeads(options) {
 
     console.log(`\n✅ RECEIVED ${items.length} RAW RESULTS FROM APIFY`);
     console.log('━'.repeat(80));
-    
+
     // Log first result as sample
     if (items.length > 0) {
       console.log('\n📄 SAMPLE RAW RESULT (First Lead):');
@@ -364,7 +355,7 @@ async function scrapeLeads(options) {
       console.log(JSON.stringify(items[0], null, 2).split('\n').map(line => `│ ${line}`).join('\n'));
       console.log('└─────────────────────────────────────────────────────────────────┘');
     }
-    
+
     console.log('\n🔄 Transforming and storing leads...');
 
     // Transform and store leads
@@ -387,7 +378,8 @@ async function scrapeLeads(options) {
     console.log('━'.repeat(80) + '\n');
 
     // Return only the requested count
-    return transformedLeads.slice(0, count);
+    // Return all new leads found, up to a reasonable limit, but at least requested count
+    return transformedLeads;
 
   } catch (error) {
     console.error(`❌ Error scraping with ${actor}:`, error);
@@ -407,54 +399,54 @@ function prepareActorInput(actor, options) {
   // Map common keywords to Apify's exact industry names
   const getIndustryFromKeyword = (kw) => {
     const lower = kw.toLowerCase();
-    
+
     // Tech-related keywords
     if (lower.includes('tech') || lower.includes('software') || lower.includes('saas')) {
       return ['information technology & services', 'computer software', 'internet'];
     }
-    
+
     // Healthcare keywords
     if (lower.includes('health') || lower.includes('medical') || lower.includes('hospital')) {
       return ['hospital & health care', 'medical practice', 'medical devices'];
     }
-    
+
     // Finance keywords
     if (lower.includes('finance') || lower.includes('banking') || lower.includes('investment')) {
       return ['financial services', 'banking', 'investment management'];
     }
-    
+
     // Marketing keywords
     if (lower.includes('marketing') || lower.includes('advertising')) {
       return ['marketing & advertising'];
     }
-    
+
     // Real estate keywords
     if (lower.includes('real estate') || lower.includes('property')) {
       return ['real estate', 'commercial real estate'];
     }
-    
+
     // E-commerce/Retail keywords
     if (lower.includes('ecommerce') || lower.includes('retail') || lower.includes('shop')) {
       return ['retail', 'internet', 'consumer goods'];
     }
-    
+
     return null;
   };
 
   switch (actor) {
     case LEAD_ACTORS.LEADS_FINDER:
       const industryFilter = getIndustryFromKeyword(keyword);
-      
+
       return {
-        fetch_count: count,
+        fetch_count: Math.max(count * 2, 20), // Request more to account for duplicates and increase total count
         email_status: ['validated'],
         // Add seniority filter if keyword mentions leadership roles
-        ...(keyword.toLowerCase().includes('ceo') || 
-            keyword.toLowerCase().includes('founder') ||
-            keyword.toLowerCase().includes('director') ||
-            keyword.toLowerCase().includes('vp') ||
-            keyword.toLowerCase().includes('chief')
-          ? { seniority_level: ['founder', 'c_suite', 'vp'] } 
+        ...(keyword.toLowerCase().includes('ceo') ||
+          keyword.toLowerCase().includes('founder') ||
+          keyword.toLowerCase().includes('director') ||
+          keyword.toLowerCase().includes('vp') ||
+          keyword.toLowerCase().includes('chief')
+          ? { seniority_level: ['founder', 'c_suite', 'vp'] }
           : {}
         ),
         // Add industry filter if detected from keyword
@@ -512,7 +504,7 @@ async function transformAndStoreLeads(items, metadata) {
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    
+
     try {
       // Transform item to standard format
       const lead = transformLeadData(item, actor);
@@ -572,11 +564,10 @@ async function transformAndStoreLeads(items, metadata) {
           $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
           $31, $32, $33, $34, $35, $36, $37, $38
         )
-        ON CONFLICT (email, website) 
+        ON CONFLICT (email, website, user_id) 
         DO UPDATE SET
           updated_at = NOW(),
-          query_used = EXCLUDED.query_used,
-          user_id = EXCLUDED.user_id
+          query_used = EXCLUDED.query_used
         RETURNING *
       `, [
         lead.company_name,
@@ -650,7 +641,7 @@ async function transformAndStoreLeads(items, metadata) {
 function transformLeadData(item, actor) {
   // This function normalizes different actor outputs to a standard format
   // The code_crafter/leads-finder actor returns: company_name, linkedin, company_size, etc.
-  
+
   const lead = {
     // Company information
     company_name: item.company_name || item.companyName || item.name || item.businessName || null,
@@ -660,30 +651,30 @@ function transformLeadData(item, actor) {
     revenue: item.company_annual_revenue || item.revenue || item.annualRevenue || null,
     founded_year: item.company_founded_year || item.foundedYear || item.yearFounded || null,
     description: item.company_description || item.description || item.about || null,
-    
+
     // Contact information
     email: item.email || item.contactEmail || item.mail || null,
     phone: item.mobile_number || item.company_phone || item.phone || item.phoneNumber || item.telephone || null,
     contact_person: item.full_name || item.first_name || item.last_name || item.contactPerson || item.owner || item.manager || null,
-    
+
     // Job/Position information  
     title: item.job_title || item.title || item.headline || null,
     snippet: item.headline || item.snippet || item.description?.substring(0, 500) || null,
-    
+
     // Location
     location: `${item.city || ''}${item.city && item.state ? ', ' : ''}${item.state || ''}`.trim() || item.company_full_address || item.location || item.address || null,
     city: item.city || item.company_city || null,
     country: item.country || item.company_country || null,
-    
+
     // Social/LinkedIn
     linkedin_url: item.linkedin || item.linkedinUrl || item.linkedin_url || null,
     facebook_url: item.facebookUrl || item.facebook || null,
     twitter_url: item.twitterUrl || item.twitter || null,
-    
+
     // Scoring
     confidence_score: item.score || item.confidence || 70,
     intent: item.seniority_level ? (item.seniority_level === 'owner' || item.seniority_level === 'c_suite' ? 'HOT' : 'WARM') : (item.intent || 'WARM'),
-    
+
     // NEW FIELDS from leads-finder actor
     first_name: item.first_name || null,
     last_name: item.last_name || null,
@@ -766,7 +757,7 @@ async function matchLeadsForDomain(options) {
     // Build WHERE clause for user filtering
     let whereClause = '';
     let params = [];
-    
+
     if (userId) {
       whereClause = 'WHERE user_id = $1';
       params.push(userId);
@@ -836,11 +827,11 @@ async function matchLeadsForDomain(options) {
 
     // Categorize leads
     const HIGH_INTEREST_THRESHOLD = 40; // Score of 40+ = High Interest
-    
+
     const highInterest = allLeads
       .filter(lead => lead.confidence_score >= HIGH_INTEREST_THRESHOLD)
       .slice(0, limitHigh);
-    
+
     const lowInterest = allLeads
       .filter(lead => lead.confidence_score < HIGH_INTEREST_THRESHOLD)
       .slice(0, limitLow);
@@ -848,7 +839,7 @@ async function matchLeadsForDomain(options) {
     console.log(`\n📊 CATEGORIZATION RESULTS:`);
     console.log(`   🔥 High Interest: ${highInterest.length} leads (score ≥ ${HIGH_INTEREST_THRESHOLD})`);
     console.log(`   📋 Low Interest: ${lowInterest.length} leads (score < ${HIGH_INTEREST_THRESHOLD})`);
-    
+
     if (highInterest.length > 0) {
       console.log(`   🏆 Top High Interest: ${highInterest[0].company_name} (Score: ${highInterest[0].confidence_score})`);
       console.log(`      📧 ${highInterest[0].email}`);
@@ -884,24 +875,24 @@ async function matchLeadsForDomain(options) {
 function extractDomainKeywords(domain) {
   // Remove TLD (.com, .io, .ai, etc.)
   const domainWithoutTld = domain.replace(/\.(com|net|org|io|ai|co|app|tech|dev|cloud|xyz|info|biz)$/i, '');
-  
+
   // Split by common separators
   const parts = domainWithoutTld.split(/[-_]/);
-  
+
   // Add full domain name without TLD as a keyword
   const keywords = [domainWithoutTld];
-  
+
   // Add individual parts if split occurred
   if (parts.length > 1) {
     keywords.push(...parts);
   }
-  
+
   // Filter out common words and short strings
-  const filtered = keywords.filter(k => 
-    k.length > 2 && 
+  const filtered = keywords.filter(k =>
+    k.length > 2 &&
     !['www', 'the', 'and', 'for', 'app'].includes(k.toLowerCase())
   );
-  
+
   // Convert to lowercase and remove duplicates
   return [...new Set(filtered.map(k => k.toLowerCase()))];
 }
