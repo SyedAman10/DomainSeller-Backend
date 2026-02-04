@@ -434,8 +434,6 @@ router.delete('/disconnect', requireAuth, async (req, res) => {
        SET registrar_account_id = NULL,
            verification_method = NULL,
            verification_level = 1,
-           verification_status = 'unverified',
-           ownership_verified = false,
            updated_at = NOW()
        WHERE registrar_account_id = $1 AND auto_synced = false
        RETURNING name`,

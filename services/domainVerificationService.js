@@ -273,14 +273,15 @@ class DomainVerificationService {
       // Upsert domain with verification info
       const result = await query(
         `INSERT INTO domains 
-          (name, user_id, verification_method, verification_level, verification_status, 
+          (name, user_id, verification_method, verification_level, verification_status, is_verified,
            verified_at, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'verified', NOW(), 'Available', NOW(), NOW())
+         VALUES ($1, $2, $3, $4, 'verified', true, NOW(), 'Available', NOW(), NOW())
          ON CONFLICT (name) DO UPDATE SET
            user_id = EXCLUDED.user_id,
            verification_method = EXCLUDED.verification_method,
            verification_level = EXCLUDED.verification_level,
            verification_status = 'verified',
+           is_verified = true,
            verified_at = NOW(),
            updated_at = NOW()
          RETURNING id, name, verification_method, verification_level, verified_at`,
