@@ -212,6 +212,8 @@ class DomainSyncService {
                  SET registrar_account_id = $1,
                      verification_method = 'registrar_api',
                      verification_level = 3,
+                     verification_status = 'verified',
+                     ownership_verified = true,
                      verified_at = NOW(),
                      auto_synced = true,
                      last_seen_at = NOW(),
@@ -228,9 +230,9 @@ class DomainSyncService {
               // Note: value defaults to 0 and category to 'Other' since we don't have this info from registrar API
               await query(
                 `INSERT INTO domains 
-                  (name, user_id, value, category, registrar_account_id, verification_method, verification_level, 
+                  (name, user_id, value, category, registrar_account_id, verification_method, verification_level, verification_status, ownership_verified,
                    verified_at, auto_synced, last_seen_at, status, expiry_date, auto_renew, transfer_locked, registrar, created_at, updated_at)
-                 VALUES ($1, $2, 0, 'Other', $3, 'registrar_api', 3, NOW(), true, NOW(), 'Available', $4, $5, $6, $7, NOW(), NOW())`,
+                 VALUES ($1, $2, 0, 'Other', $3, 'registrar_api', 3, 'verified', true, NOW(), true, NOW(), 'Available', $4, $5, $6, $7, NOW(), NOW())`,
                 [domainName, account.user_id, registrarAccountId, expiryDate, autoRenew, transferLocked, registrarName]
               );
             }
@@ -319,6 +321,8 @@ class DomainSyncService {
                SET registrar_account_id = NULL,
                    verification_method = NULL,
                    verification_level = 1,
+                   verification_status = 'unverified',
+                   ownership_verified = false,
                    updated_at = NOW()
                WHERE id = $1`,
               [domain.id]
@@ -693,6 +697,8 @@ class DomainSyncService {
                SET registrar_account_id = $1,
                    verification_method = 'registrar_api',
                    verification_level = 3,
+                   verification_status = 'verified',
+                   ownership_verified = true,
                    verified_at = NOW(),
                    last_seen_at = NOW(),
                    expiry_date = COALESCE($3, expiry_date),
