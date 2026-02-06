@@ -334,15 +334,23 @@ router.post('/verify', requireAuth, async (req, res) => {
   try {
     const { accountId } = req.body;
 
-    // If no accountId provided, verify all accounts for this user
+    // If no accountId provided, verify all accounts for this user (async)
     if (!accountId) {
-      console.log(`🔄 Verifying all accounts for user ${req.user.id}...`);
-      const results = await domainSyncService.verifyUserDomains(req.user.id);
+      console.log(`🔄 Verifying all accounts for user ${req.user.id} (async)...`);
 
-      return res.json({
+      // Fire-and-forget to avoid gateway timeouts
+      domainSyncService.verifyUserDomains(req.user.id)
+        .then(results => {
+          console.log(`✅ Verification completed for all accounts (user ${req.user.id}):`, results);
+        })
+        .catch(err => {
+          console.error(`❌ Verification failed for all accounts (user ${req.user.id}):`, err);
+        });
+
+      return res.status(202).json({
         success: true,
-        message: 'Verification completed for all accounts',
-        results: results
+        message: 'Verification started for all accounts',
+        status: 'in_progress'
       });
     }
 
@@ -359,14 +367,21 @@ router.post('/verify', requireAuth, async (req, res) => {
       });
     }
 
-    // Trigger verification
-    console.log(`🔄 Starting bulk verification for account ${accountId}...`);
-    const stats = await domainSyncService.verifyExistingDomains(accountId);
+    // Trigger verification asynchronously to avoid gateway timeouts
+    console.log(`🔄 Starting bulk verification for account ${accountId} (async)...`);
+    domainSyncService.verifyExistingDomains(accountId)
+      .then(stats => {
+        console.log(`✅ Bulk verification completed for account ${accountId}:`, stats);
+      })
+      .catch(err => {
+        console.error(`❌ Bulk verification failed for account ${accountId}:`, err);
+      });
 
-    res.json({
+    res.status(202).json({
       success: true,
-      message: 'Domain verification completed',
-      stats: stats
+      message: 'Domain verification started',
+      status: 'in_progress',
+      accountId: accountId
     });
 
   } catch (error) {
