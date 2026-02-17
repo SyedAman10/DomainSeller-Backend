@@ -25,7 +25,7 @@ const runRedditScraper = async () => {
 const runFacebookScraper = async () => {
     const input = {
         startUrls: [{ url: "https://www.facebook.com/groups/3280541332233338" }],
-        resultsLimit: 20,
+        resultsLimit: 10,
         viewOption: "CHRONOLOGICAL",
         useProxy: true
     };
