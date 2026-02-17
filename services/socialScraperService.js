@@ -1,7 +1,7 @@
 const { ApifyClient } = require('apify-client');
 require('dotenv').config();
 
-const client = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
+const client = new ApifyClient({ token: process.env.APIFY_API_KEY });
 
 const runRedditScraper = async () => {
     const input = {
