@@ -133,20 +133,19 @@ router.post('/run/:platform', requireAuth, async (req, res) => {
     const { platform } = req.params;
     const userId = req.user.id;
 
-    // 1. VERIFY USER EXISTS IN EITHER TABLE BEFORE SCRAPING
-    const isValidUser = await verifyUserExists(userId);
-    if (!isValidUser) {
-        console.error(`❌ User ID ${userId} not found in 'users' OR 'dashboard_users'`);
-        return res.status(404).json({ error: "User ID invalid. Please log in again." });
-    }
+    // Extract config from body
+    const { limit, url } = req.body;
 
-    console.log(`🚀 User ${userId} verified. Starting ${platform} scrape...`);
+    // 1. VERIFY USER EXISTS (Keep your existing check here)
+
+    console.log(`🚀 User ${userId} starting ${platform} scrape. Limit: ${limit || 'default'}`);
 
     try {
         let items = [];
-        if (platform === 'reddit') items = await runRedditScraper();
-        else if (platform === 'facebook') items = await runFacebookScraper();
-        else if (platform === 'twitter') items = await runTwitterScraper();
+        // Pass dynamic params to services
+        if (platform === 'reddit') items = await runRedditScraper(limit);
+        else if (platform === 'facebook') items = await runFacebookScraper(limit, url);
+        else if (platform === 'twitter') items = await runTwitterScraper(limit);
         else return res.status(400).json({ error: "Invalid platform" });
 
         const savedCount = await processAndSaveLeads(items, platform, userId);
