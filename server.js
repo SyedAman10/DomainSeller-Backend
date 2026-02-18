@@ -23,6 +23,7 @@ const adminRoutes = require('./routes/admin');
 const buyerRoutes = require('./routes/buyer');
 const salesRoutes = require('./routes/sales');
 const aiAgentRoutes = require('./routes/aiAgent');
+const socialLeadsRoutes = require('./routes/socialLeads');
 
 // Try to load registrar routes - may fail if dependencies are missing
 let registrarRoutes = null;
@@ -57,7 +58,7 @@ console.log('🌐 CORS Allowed Origins:', allowedOrigins);
 app.use(cors({
   origin: function (origin, callback) {
     console.log(`🔍 CORS Check - Origin: ${origin || 'NO ORIGIN'}`);
-    
+
     // Allow requests with no origin (like mobile apps, curl, Postman, or same-origin)
     if (!origin) {
       console.log('   ✅ Allowed: No origin (same-origin or non-browser)');
@@ -77,7 +78,7 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-User-Id'],
-  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id', "X-User-Id"],
   maxAge: 86400, // 24 hours
   preflightContinue: false,
   optionsSuccessStatus: 204
@@ -112,12 +113,12 @@ app.use((req, res, next) => {
 
 // Stripe webhook route MUST be registered BEFORE body parser
 // It needs raw body for signature verification
-app.use('/backend/stripe/webhook', 
-  express.raw({ type: 'application/json' }), 
+app.use('/backend/stripe/webhook',
+  express.raw({ type: 'application/json' }),
   require('./routes/stripe')
 );
-app.use('/stripe/webhook', 
-  express.raw({ type: 'application/json' }), 
+app.use('/stripe/webhook',
+  express.raw({ type: 'application/json' }),
   require('./routes/stripe')
 );
 
@@ -186,6 +187,7 @@ app.use('/backend/admin', adminRoutes);
 app.use('/backend/buyer', buyerRoutes);
 app.use('/backend/sales', salesRoutes);
 app.use('/backend/ai-agent', aiAgentRoutes);
+app.use('/api/social-leads', socialLeadsRoutes);
 
 // Only register registrar routes if they loaded successfully
 if (registrarRoutes) {
@@ -221,8 +223,8 @@ app.use((req, res) => {
 
   res.status(404).json({
     error: 'Not Found',
-    message: req.path.startsWith('/backend/registrar') && !registrarRoutes 
-      ? 'Registrar integration is currently unavailable (module failed to load)' 
+    message: req.path.startsWith('/backend/registrar') && !registrarRoutes
+      ? 'Registrar integration is currently unavailable (module failed to load)'
       : 'The requested endpoint does not exist',
     path: req.path,
     method: req.method,
@@ -275,7 +277,7 @@ const startServer = async () => {
     }
 
     // Start listening
-    app.listen(PORT,"127.0.0.1" , () => {
+    app.listen(PORT, "127.0.0.1", () => {
       console.log('');
       console.log('='.repeat(50));
       console.log(`🚀 Campaign Backend Server Running`);
