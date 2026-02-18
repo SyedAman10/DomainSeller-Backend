@@ -8,7 +8,7 @@ const DEFAULT_FB_GROUPS = [
     "https://www.facebook.com/groups/3280541332233338", // Group 1
     "https://www.facebook.com/groups/domainbusiness",   // Group 2
     "https://www.facebook.com/groups/bestwebhostingdomainflip", // Group 3
-    "https://www.facebook.com/groups/shopifyfordummies", // Group 4
+    "https://www.facebook.com/groups/domainnamegroup", // Group 4
     "https://www.facebook.com/groups/saasfounders"       // Group 5
 ];
 
