@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
-const { requireAuth } = require('../middleware/auth'); // Uses your existing Auth middleware
+const { requireAuth } = require('../middleware/auth');
 const { runRedditScraper, runFacebookScraper, runTwitterScraper } = require('../services/socialScraperService');
 const { analyzeSocialLead } = require('../services/socialAiService');
 
@@ -49,15 +49,39 @@ const processAndSaveLeads = async (items, platform, userId) => {
     for (const item of items) {
         const leadData = normalizeItem(item, platform);
 
-        // Validation
+        // 1. Basic Validation
         if (!leadData.content || leadData.content.length < 5) continue;
+
+        // 2. Keyword Filter
         const isDomainRelated = DOMAIN_KEYWORDS.some(k => leadData.content.toLowerCase().includes(k));
         if (!isDomainRelated) continue;
 
-        // AI Analysis
+        // 3. DUPLICATE CHECK (Prevent Saving if Author + Content exists)
+        // We check if this specific user already has this lead from this author with this content.
+        try {
+            const existingCheck = await query(
+                `SELECT id FROM social_leads 
+                 WHERE user_id = $1 
+                 AND platform = $2 
+                 AND author_name = $3 
+                 AND content = $4 
+                 LIMIT 1`,
+                [userId, platform, leadData.author_name, leadData.content]
+            );
+
+            if (existingCheck.rows.length > 0) {
+                console.log(`⚠️ Duplicate skipped: ${leadData.author_name}`);
+                continue; 
+            }
+        } catch (dbError) {
+            console.error("Database check error:", dbError);
+            continue;
+        }
+
+        // 4. AI Analysis (Only run if it's unique and relevant)
         const aiResult = await analyzeSocialLead(leadData.content, platform);
 
-        // Save High/Medium Intent Leads
+        // 5. Save High/Medium Intent Leads
         if (["buyer", "seller", "founder"].includes(aiResult.intent) && aiResult.score !== "low") {
             await query(
                 `INSERT INTO social_leads 
@@ -78,6 +102,7 @@ const processAndSaveLeads = async (items, platform, userId) => {
                 ]
             );
             savedCount++;
+            console.log(`✅ Saved new lead: ${leadData.author_name}`);
         }
     }
     return savedCount;
@@ -108,7 +133,7 @@ router.post('/run/:platform', requireAuth, async (req, res) => {
             platform,
             scanned: items.length,
             saved: savedCount,
-            message: `Scraped ${items.length} items, saved ${savedCount} qualified leads.`
+            message: `Scraped ${items.length} items, saved ${savedCount} NEW qualified leads.`
         });
 
     } catch (error) {
@@ -119,18 +144,35 @@ router.post('/run/:platform', requireAuth, async (req, res) => {
 
 /**
  * GET /api/social-leads
- * Get leads for the logged-in user
+ * Get leads. 
+ * - If Admin: Returns ALL leads.
+ * - If Normal User: Returns ONLY their leads.
  */
 router.get('/', requireAuth, async (req, res) => {
     const userId = req.user.id;
-    console.log(userId);
+    const userRole = req.user.role; // Assuming 'role' is populated in your auth middleware
+
+    console.log(`Fetching leads for User: ${userId}, Role: ${userRole}`);
+
     try {
-        const result = await query(
-            'SELECT * FROM social_leads WHERE user_id = $1 ORDER BY created_at DESC',
-            [userId]
-        );
+        let result;
+
+        if (userRole === 'admin') {
+            // ADMIN: Fetch ALL leads
+            result = await query(
+                'SELECT * FROM social_leads ORDER BY created_at DESC'
+            );
+        } else {
+            // NORMAL USER: Fetch only their leads
+            result = await query(
+                'SELECT * FROM social_leads WHERE user_id = $1 ORDER BY created_at DESC',
+                [userId]
+            );
+        }
+
         res.json({ success: true, data: result.rows });
     } catch (error) {
+        console.error("Error fetching leads:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
