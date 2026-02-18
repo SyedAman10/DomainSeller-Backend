@@ -61,23 +61,23 @@ app.use(cors({
 
     // Allow requests with no origin (like mobile apps, curl, Postman, or same-origin)
     if (!origin) {
-      console.log('   ✅ Allowed: No origin (same-origin or non-browser)');
+      console.log('✅ Allowed: No origin (same-origin or non-browser)');
       return callback(null, true);
     }
 
     if (allowedOrigins.includes(origin) || origin.endsWith('.3vltn.com') || origin === 'https://3vltn.com') {
-      console.log(`   ✅ Allowed: ${origin} is in whitelist`);
+      console.log(`✅ Allowed: ${origin} is in whitelist`);
       callback(null, true);
     } else {
-      console.warn(`   ❌ BLOCKED: ${origin} not in whitelist`);
-      console.warn(`   Allowed origins: ${allowedOrigins.join(', ')}`);
+      console.warn(`❌ BLOCKED: ${origin} not in whitelist`);
+      console.warn(`Allowed origins: ${allowedOrigins.join(', ')}`);
       // Don't throw error, just deny
       callback(null, false);
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-User-Id'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-User-Id', "X-User-Role"],
   exposedHeaders: ['Content-Length', 'X-Request-Id', "X-User-Id"],
   maxAge: 86400, // 24 hours
   preflightContinue: false,

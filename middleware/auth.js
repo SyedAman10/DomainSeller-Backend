@@ -37,28 +37,35 @@
  */
 const requireAuth = (req, res, next) => {
   try {
-    // Method 1: Check for X-User-Id header (simple auth for testing)
+    // ============================================================
+    // Method 1: Check for X-User-Id AND X-User-Role headers
+    // ============================================================
     const userId = req.headers['x-user-id'];
-    
+    const userRole = req.headers['x-user-role']; // <--- NEW: Capture Role
+
     if (userId) {
       req.user = {
-        id: parseInt(userId, 10)
+        id: parseInt(userId, 10),
+        role: userRole || 'user' // <--- NEW: Save Role (default to 'user')
       };
+      // console.log(`🔓 Auth via Headers: ID=${req.user.id}, Role=${req.user.role}`);
       return next();
     }
 
-    // Method 2: Check for Authorization header
+    // ============================================================
+    // Method 2: Check for Authorization header (Bearer Token)
+    // ============================================================
     const authHeader = req.headers['authorization'];
-    
+
     if (authHeader) {
       // Extract token from "Bearer <token>" format
       let token = authHeader;
-      
+
       // Remove "Bearer " prefix (case-insensitive)
       if (token.toLowerCase().startsWith('bearer ')) {
         token = token.substring(7).trim();
       }
-      
+
       console.log('🔍 Extracted token (first 50 chars):', token.substring(0, 50) + '...');
 
       if (token && token !== 'Bearer') {
@@ -77,13 +84,13 @@ const requireAuth = (req, res, next) => {
             if (jwt) {
               // Verify JWT token
               const decoded = jwt.verify(token, process.env.JWT_SECRET);
-              
+
               console.log('🔍 JWT decoded payload:', decoded);
-              
+
               // Try multiple common field names for user ID
-              const userId = decoded.userId || decoded.id || decoded.sub || 
-                            decoded.user_id || decoded.ID || decoded.user?.id;
-              
+              const userId = decoded.userId || decoded.id || decoded.sub ||
+                decoded.user_id || decoded.ID || decoded.user?.id;
+
               if (!userId) {
                 console.error('❌ No user ID found in JWT token. Payload:', decoded);
                 return res.status(401).json({
@@ -93,19 +100,20 @@ const requireAuth = (req, res, next) => {
                   hint: 'JWT must include user ID in one of these fields: userId, id, sub, user_id'
                 });
               }
-              
+
               req.user = {
                 id: parseInt(userId, 10),
                 email: decoded.email,
+                role: decoded.role || 'user', // <--- Ensure role is extracted from JWT too
                 ...decoded
               };
-              
+
               console.log('✅ JWT verified, User ID:', req.user.id);
               return next();
             }
           } catch (jwtError) {
             console.error('❌ JWT verification failed:', jwtError.message);
-            
+
             // If verification failed, try to decode without verification to see what's inside
             try {
               const parts = token.split('.');
@@ -116,7 +124,7 @@ const requireAuth = (req, res, next) => {
             } catch (e) {
               console.error('Could not decode token for debugging');
             }
-            
+
             return res.status(401).json({
               success: false,
               message: 'Invalid or expired token',
@@ -127,16 +135,17 @@ const requireAuth = (req, res, next) => {
 
         // Fallback: Try to parse token as simple format (e.g., "userId:timestamp:signature")
         // This is a simplified approach for systems that don't use standard JWT
-        
+
         console.log('🔍 Attempting fallback token parsing...');
         console.log('   Token (first 50 chars):', token.substring(0, 50) + '...');
-        
+
         // Try to parse as user ID
         const parsedUserId = parseInt(token, 10);
         if (!isNaN(parsedUserId)) {
           console.log('✅ Token parsed as user ID:', parsedUserId);
           req.user = {
-            id: parsedUserId
+            id: parsedUserId,
+            role: 'user' // Default role for simple token
           };
           return next();
         }
@@ -145,12 +154,13 @@ const requireAuth = (req, res, next) => {
         try {
           const decoded = Buffer.from(token, 'base64').toString('utf8');
           const parsed = JSON.parse(decoded);
-          
+
           console.log('🔍 Base64 decoded token:', parsed);
-          
+
           if (parsed.userId || parsed.id) {
             req.user = {
               id: parsed.userId || parsed.id,
+              role: parsed.role || 'user', // Extract role
               ...parsed
             };
             console.log('✅ Token parsed from base64, User ID:', req.user.id);
@@ -167,19 +177,20 @@ const requireAuth = (req, res, next) => {
           if (parts.length === 3) {
             const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
             console.log('🔍 JWT payload (no secret verification):', payload);
-            
+
             // Extract user ID from common fields
-            const userId = payload.userId || payload.id || payload.sub || 
-                          payload.user_id || payload.ID || payload.user?.id;
-            
+            const userId = payload.userId || payload.id || payload.sub ||
+              payload.user_id || payload.ID || payload.user?.id;
+
             if (userId) {
               console.log('⚠️  Found user ID in JWT but JWT_SECRET may not match');
               console.log('   User ID:', userId);
               console.log('   Hint: Check if frontend and backend use the same JWT_SECRET');
-              
+
               // Allow it through anyway for debugging
               req.user = {
                 id: parseInt(userId, 10),
+                role: payload.role || 'user', 
                 ...payload
               };
               return next();
@@ -189,7 +200,7 @@ const requireAuth = (req, res, next) => {
             }
           }
         } catch (e) {
-          console.log('   Not a JWT token');
+          console.log('Not a JWT token');
         }
 
         // If we get here, we couldn't parse the token
@@ -235,10 +246,10 @@ const optionalAuth = (req, res, next) => {
         id: parseInt(userId, 10)
       };
     } else if (authHeader) {
-      const token = authHeader.startsWith('Bearer ') 
-        ? authHeader.slice(7) 
+      const token = authHeader.startsWith('Bearer ')
+        ? authHeader.slice(7)
         : authHeader;
-      
+
       const parsedUserId = parseInt(token, 10);
       if (!isNaN(parsedUserId)) {
         req.user = {
