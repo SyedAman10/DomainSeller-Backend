@@ -90,7 +90,7 @@ const processAndSaveLeads = async (items, platform, userId) => {
  */
 router.post('/run/:platform', requireAuth, async (req, res) => {
     const { platform } = req.params;
-    const userId = req.user.id; // Extracted from auth middleware
+    const userId = req.user.id;
 
     console.log(`🚀 User ${userId} starting ${platform} scrape...`);
 
@@ -123,6 +123,7 @@ router.post('/run/:platform', requireAuth, async (req, res) => {
  */
 router.get('/', requireAuth, async (req, res) => {
     const userId = req.user.id;
+    console.log(userId);
     try {
         const result = await query(
             'SELECT * FROM social_leads WHERE user_id = $1 ORDER BY created_at DESC',
