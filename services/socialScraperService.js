@@ -7,7 +7,7 @@ const runRedditScraper = async () => {
     const input = {
         searches: ["domain sale", "buying domain", "startup naming", "brand name help", "purchase domain", "sell domain", "domain buyers", "domain sellers", "startup founders"],
         sort: "new",
-        maxItems: 20,
+        maxItems: 5,
         proxy: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] }
     };
 

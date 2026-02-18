@@ -42,6 +42,24 @@ const normalizeItem = (item, platform) => {
     return data;
 };
 
+// Helper: Verify User Exists in EITHER table
+const verifyUserExists = async (userId) => {
+    try {
+        // Check both tables for the ID
+        const result = await query(
+            `SELECT id FROM users WHERE id = $1 
+             UNION 
+             SELECT id FROM dashboard_users WHERE id = $1 
+             LIMIT 1`,
+            [userId]
+        );
+        return result.rows.length > 0;
+    } catch (error) {
+        console.error("User Verification Error:", error);
+        return false;
+    }
+};
+
 // Helper: Processor
 const processAndSaveLeads = async (items, platform, userId) => {
     let savedCount = 0;
@@ -57,7 +75,6 @@ const processAndSaveLeads = async (items, platform, userId) => {
         if (!isDomainRelated) continue;
 
         // 3. DUPLICATE CHECK (Prevent Saving if Author + Content exists)
-        // We check if this specific user already has this lead from this author with this content.
         try {
             const existingCheck = await query(
                 `SELECT id FROM social_leads 
@@ -71,14 +88,14 @@ const processAndSaveLeads = async (items, platform, userId) => {
 
             if (existingCheck.rows.length > 0) {
                 console.log(`⚠️ Duplicate skipped: ${leadData.author_name}`);
-                continue; 
+                continue;
             }
         } catch (dbError) {
             console.error("Database check error:", dbError);
             continue;
         }
 
-        // 4. AI Analysis (Only run if it's unique and relevant)
+        // 4. AI Analysis
         const aiResult = await analyzeSocialLead(leadData.content, platform);
 
         // 5. Save High/Medium Intent Leads
@@ -111,13 +128,19 @@ const processAndSaveLeads = async (items, platform, userId) => {
 /**
  * POST /api/social-leads/run/:platform
  * Platforms: reddit, facebook, twitter
- * Requires: X-User-Id header or Bearer Token
  */
 router.post('/run/:platform', requireAuth, async (req, res) => {
     const { platform } = req.params;
     const userId = req.user.id;
 
-    console.log(`🚀 User ${userId} starting ${platform} scrape...`);
+    // 1. VERIFY USER EXISTS IN EITHER TABLE BEFORE SCRAPING
+    const isValidUser = await verifyUserExists(userId);
+    if (!isValidUser) {
+        console.error(`❌ User ID ${userId} not found in 'users' OR 'dashboard_users'`);
+        return res.status(404).json({ error: "User ID invalid. Please log in again." });
+    }
+
+    console.log(`🚀 User ${userId} verified. Starting ${platform} scrape...`);
 
     try {
         let items = [];
@@ -133,7 +156,7 @@ router.post('/run/:platform', requireAuth, async (req, res) => {
             platform,
             scanned: items.length,
             saved: savedCount,
-            message: `Scraped ${items.length} items, saved ${savedCount} NEW qualified leads.`
+            message: `Scraped ${items.length} items, saved ${savedCount} qualified leads.`
         });
 
     } catch (error) {
@@ -144,26 +167,18 @@ router.post('/run/:platform', requireAuth, async (req, res) => {
 
 /**
  * GET /api/social-leads
- * Get leads. 
- * - If Admin: Returns ALL leads.
- * - If Normal User: Returns ONLY their leads.
+ * Admins see all, Users see theirs.
  */
 router.get('/', requireAuth, async (req, res) => {
     const userId = req.user.id;
-    const userRole = req.user.role; // Assuming 'role' is populated in your auth middleware
-
-    console.log(`Fetching leads for User: ${userId}, Role: ${userRole}`);
+    const userRole = req.user.role;
 
     try {
         let result;
 
         if (userRole === 'admin') {
-            // ADMIN: Fetch ALL leads
-            result = await query(
-                'SELECT * FROM social_leads ORDER BY created_at DESC'
-            );
+            result = await query('SELECT * FROM social_leads ORDER BY created_at DESC');
         } else {
-            // NORMAL USER: Fetch only their leads
             result = await query(
                 'SELECT * FROM social_leads WHERE user_id = $1 ORDER BY created_at DESC',
                 [userId]
