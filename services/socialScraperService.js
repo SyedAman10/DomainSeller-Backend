@@ -1,7 +1,7 @@
 const { ApifyClient } = require('apify-client');
 require('dotenv').config();
 
-const client = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
+const client = new ApifyClient({ token: process.env.APIFY_API_KEY });
 
 // Default Facebook Groups (if user doesn't provide one)
 const DEFAULT_FB_GROUPS = [
