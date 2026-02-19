@@ -574,7 +574,15 @@ router.get('/search', async (req, res) => {
  * GET /api/leads/:id
  * Get single lead by ID
  */
-router.get('/:id', async (req, res) => {
+router.get('/generate', (req, res) => {
+  return res.status(405).json({
+    success: false,
+    error: 'Method Not Allowed',
+    message: 'Use POST /backend/leads/generate'
+  });
+});
+
+router.get('/:id(\\d+)', async (req, res) => {
   console.log(`🔍 Fetching lead ${req.params.id}...`);
 
   try {
@@ -611,7 +619,7 @@ router.get('/:id', async (req, res) => {
  * PUT /api/leads/:id
  * Update lead (status, notes, assignment, etc.)
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id(\\d+)', async (req, res) => {
   console.log(`✏️ Updating lead ${req.params.id}...`);
 
   try {
@@ -719,7 +727,7 @@ router.put('/:id', async (req, res) => {
  * DELETE /api/leads/:id
  * Delete a lead (GDPR compliance)
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id(\\d+)', async (req, res) => {
   console.log(`🗑️ Deleting lead ${req.params.id}...`);
 
   try {
@@ -795,7 +803,7 @@ router.get('/sessions/:sessionId', async (req, res) => {
  * POST /api/leads/:id/crawl
  * Manually trigger contact crawling for a specific lead
  */
-router.post('/:id/crawl', async (req, res) => {
+router.post('/:id(\\d+)/crawl', async (req, res) => {
   console.log(`🕷️ Manual crawl requested for lead ${req.params.id}...`);
 
   try {
