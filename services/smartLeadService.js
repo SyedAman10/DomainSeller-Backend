@@ -447,19 +447,30 @@ function prepareActorInput(actor, options) {
   switch (actor) {
     case LEAD_ACTORS.LEADS_FINDER:
       const industryFilter = getIndustryFromKeyword(keyword);
+      const lowerKeyword = (keyword || '').toLowerCase();
+
+      // Infer basic role targeting from keyword (e.g. "ceos", "founders")
+      let contactJobTitle = null;
+      if (/\bceo\b|\bceos\b/.test(lowerKeyword)) contactJobTitle = ['ceo'];
+      else if (/\bfounder\b|\bfounders\b/.test(lowerKeyword)) contactJobTitle = ['founder'];
+      else if (/\bowner\b|\bowners\b/.test(lowerKeyword)) contactJobTitle = ['owner'];
+
+      // Infer seniority from keyword
+      const seniorityLevel =
+        /\bceo\b|\bceos\b|\bc-level\b|\bchief\b/.test(lowerKeyword) ? ['c_suite'] :
+          (/\bfounder\b|\bfounders\b|\bowner\b|\bowners\b/.test(lowerKeyword) ? ['founder', 'owner'] : null);
+
+      // Prefer explicit location, otherwise infer "in <location>" from keyword
+      const inferredLocationMatch = (keyword || '').match(/\bin\s+([a-zA-Z\s,.-]+)$/i);
+      const contactLocation = location || (inferredLocationMatch ? inferredLocationMatch[1].trim() : null);
 
       return {
-        fetch_count: Math.max(count * 2, 20), // Request more to account for duplicates and increase total count
+        // Respect requested limit to avoid over-generation.
+        fetch_count: Math.max(1, Number(count) || 5),
         email_status: ['validated'],
-        // Add seniority filter if keyword mentions leadership roles
-        ...(keyword.toLowerCase().includes('ceo') ||
-          keyword.toLowerCase().includes('founder') ||
-          keyword.toLowerCase().includes('director') ||
-          keyword.toLowerCase().includes('vp') ||
-          keyword.toLowerCase().includes('chief')
-          ? { seniority_level: ['founder', 'c_suite', 'vp'] }
-          : {}
-        ),
+        ...(contactJobTitle ? { contact_job_title: contactJobTitle } : {}),
+        ...(seniorityLevel ? { seniority_level: seniorityLevel } : {}),
+        ...(contactLocation ? { contact_location: [contactLocation] } : {}),
         // Add industry filter if detected from keyword
         ...(industryFilter ? { company_industry: industryFilter } : {})
       };
