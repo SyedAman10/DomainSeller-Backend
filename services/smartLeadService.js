@@ -66,91 +66,8 @@ async function generateLeads(options) {
   console.log('└─────────────────────────────────────────────────────────────────┘');
 
   try {
-    // Only admin can bypass shared cache with forceRefresh.
-    const canForceRefresh = userRole === 'admin';
-    const useForceRefresh = canForceRefresh && forceRefresh === true;
-
-    // Step 1: Check cache with user-aware behavior
-    if (!useForceRefresh) {
-      console.log('\n🔍 STEP 1: Checking user-specific leads for this keyword...');
-
-      const userCachedLeads = await searchCachedLeads({
-        keyword,
-        location,
-        industry,
-        limit: Math.max(count, 100),
-        userId
-      });
-
-      // If the same user already has leads for this keyword, fetch fresh leads.
-      if (userCachedLeads.length > 0) {
-        console.log('\n🔄 USER CACHE HIT - Scraping fresh leads for same user');
-        console.log('┌─────────────────────────────────────────────────────────────────┐');
-        console.log(`│ User already has: ${userCachedLeads.length} leads for this keyword`);
-        console.log('│ Result: Forcing fresh scrape for this user');
-        console.log('└─────────────────────────────────────────────────────────────────┘');
-
-        // Scrape more than requested so we can remove already-owned leads.
-        const scrapeCount = Math.max(count * 2, 20);
-        const scrapedLeads = await scrapeLeads({
-          keyword,
-          location,
-          industry,
-          count: scrapeCount,
-          actor,
-          userId
-        });
-
-        const existingIds = new Set(userCachedLeads.map((lead) => lead.id));
-        const freshLeads = scrapedLeads.filter((lead) => !existingIds.has(lead.id));
-
-        return {
-          success: true,
-          source: 'scraping',
-          leads: freshLeads.slice(0, count),
-          totalFound: freshLeads.length,
-          requested: count,
-          fromCache: userCachedLeads.length,
-          fromScraping: freshLeads.length,
-          scrapingUsed: true
-        };
-      } else {
-        console.log('\nℹ️ USER CACHE MISS - Checking shared cache...');
-
-        const sharedCachedLeads = await searchCachedLeads({
-          keyword,
-          location,
-          industry,
-          limit: Math.max(count, 100)
-        });
-
-        // If this user does not have these leads yet, they can use shared cache.
-        if (sharedCachedLeads.length > 0) {
-          console.log('\n✅ SHARED CACHE HIT - Returning leads from other users');
-          console.log('┌─────────────────────────────────────────────────────────────────┐');
-          console.log(`│ Found: ${sharedCachedLeads.length} shared cached leads (requested: ${count})`);
-          console.log('│ Result: Returning shared cache');
-          console.log('└─────────────────────────────────────────────────────────────────┘');
-
-          return {
-            success: true,
-            source: 'cache',
-            leads: sharedCachedLeads.slice(0, count),
-            totalFound: sharedCachedLeads.length,
-            requested: count,
-            fromCache: sharedCachedLeads.length,
-            scrapingUsed: false
-          };
-        }
-
-        console.log('\n❌ SHARED CACHE MISS - No cached leads found');
-      }
-    } else {
-      console.log('\n🔄 FORCE REFRESH (admin) - Skipping cache check');
-    }
-
-    // Step 2: No cached leads found or force refresh - scrape new leads
-    console.log('\n🕷️  STEP 2: Starting fresh scraping...');
+    // Always scrape fresh data for each request. Cache is not used for reads.
+    console.log('\n🕷️  STEP 1: Starting fresh scraping (cache disabled for reads)...');
 
     const scrapedLeads = await scrapeLeads({
       keyword,
@@ -575,6 +492,15 @@ async function transformAndStoreLeads(items, metadata) {
   const { keyword, location, industry, actor, runId, userId } = metadata;
   const storedLeads = [];
   let duplicateCount = 0;
+  const normalizeEmail = (email) => (email ? String(email).trim().toLowerCase() : null);
+  const normalizeWebsite = (website) => {
+    if (!website) return null;
+    return String(website)
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\/(www\.)?/, '')
+      .replace(/\/+$/, '');
+  };
 
   console.log('\n🔄 TRANSFORMING LEADS:');
   console.log(`   Processing ${items.length} raw items...`);
@@ -589,6 +515,25 @@ async function transformAndStoreLeads(items, metadata) {
       // Skip if no essential data
       if (!lead.company_name && !lead.email && !lead.website) {
         console.log(`   ⚠️  [${i + 1}/${items.length}] Skipped: Insufficient data`);
+        continue;
+      }
+
+      const normalizedEmail = normalizeEmail(lead.email);
+      const normalizedWebsite = normalizeWebsite(lead.website);
+
+      // Global duplicate check: never save same email/website again for any user.
+      const duplicateCheck = await query(
+        `SELECT id
+         FROM generated_leads
+         WHERE ($1::text IS NOT NULL AND LOWER(email) = $1)
+            OR ($2::text IS NOT NULL AND regexp_replace(LOWER(COALESCE(website, '')), '^https?://(www\\.)?', '') = $2)
+         LIMIT 1`,
+        [normalizedEmail, normalizedWebsite]
+      );
+
+      if (duplicateCheck.rows.length > 0) {
+        duplicateCount++;
+        console.log(`      ℹ️  Duplicate - skipped existing ID ${duplicateCheck.rows[0].id}`);
         continue;
       }
 
@@ -641,14 +586,12 @@ async function transformAndStoreLeads(items, metadata) {
           $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
           $31, $32, $33, $34, $35, $36, $37, $38
         )
-        ON CONFLICT (email, website, user_id) 
-        DO UPDATE SET
-          updated_at = NOW(),
-          query_used = EXCLUDED.query_used
+        ON CONFLICT (email, website, user_id)
+        DO NOTHING
         RETURNING *
       `, [
         lead.company_name,
-        lead.email,
+        normalizedEmail,
         lead.phone,
         lead.website,
         lead.location || location,
@@ -687,8 +630,13 @@ async function transformAndStoreLeads(items, metadata) {
         userId  // NEW: Save with user_id
       ]);
 
-      storedLeads.push(result.rows[0]);
-      console.log(`      ✅ Stored successfully (ID: ${result.rows[0].id})`);
+      if (result.rows.length > 0) {
+        storedLeads.push(result.rows[0]);
+        console.log(`      ✅ Stored successfully (ID: ${result.rows[0].id})`);
+      } else {
+        duplicateCount++;
+        console.log(`      ℹ️  Duplicate - skipped`);
+      }
 
     } catch (error) {
       // If it's a duplicate key error, that's OK - we just skip it
