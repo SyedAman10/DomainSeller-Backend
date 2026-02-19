@@ -53,6 +53,10 @@ const allowedOrigins = [
   'https://3-vltn-dashboard.vercel.app'
 ];
 
+const isAllowedVercelDashboardOrigin = (origin) => {
+  return /^https:\/\/3-vltn-dashboard(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin);
+};
+
 console.log('🌐 CORS Allowed Origins:', allowedOrigins);
 
 app.use(cors({
@@ -65,7 +69,12 @@ app.use(cors({
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin) || origin.endsWith('.3vltn.com') || origin === 'https://3vltn.com') {
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.3vltn.com') ||
+      origin === 'https://3vltn.com' ||
+      isAllowedVercelDashboardOrigin(origin)
+    ) {
       console.log(`✅ Allowed: ${origin} is in whitelist`);
       callback(null, true);
     } else {
