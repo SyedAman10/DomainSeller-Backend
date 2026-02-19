@@ -527,7 +527,7 @@ router.get('/search', async (req, res) => {
       });
     }
 
-    const limitNum = Math.min(parseInt(limit) || 10, 100);
+    const limitNum = Math.min(parseInt(limit) || 10, 1000);
     const userIdNum = userId ? parseInt(userId) : null;
 
     console.log(`   Keyword: "${keyword || 'All'}"`);
@@ -985,6 +985,10 @@ router.post('/generate', requireAuth, async (req, res) => {
     console.log('└─────────────────────────────────────────────────────────────────┘');
     console.log('═'.repeat(80) + '\n');
 
+    const generationMessage = result.leads.length < count
+      ? `Only ${result.leads.length} new unique leads found. Most results were duplicates. Try a more specific keyword or add location/industry filters.`
+      : `Generated ${result.leads.length} new unique leads successfully.`;
+
     res.json({
       success: true,
       source: result.source,
@@ -995,6 +999,7 @@ router.post('/generate', requireAuth, async (req, res) => {
       fromScraping: result.fromScraping || 0,
       scrapingUsed: result.scrapingUsed,
       actorUsed: actorToUse,
+      message: generationMessage,
       cacheEfficiency: result.totalFound > 0 
         ? `${Math.round((result.fromCache || 0) / result.totalFound * 100)}%` 
         : '0%',
