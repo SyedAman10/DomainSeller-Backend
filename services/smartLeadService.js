@@ -159,7 +159,10 @@ async function searchCachedLeads(filters) {
       ? `WHERE ${whereConditions.join(' AND ')}`
       : '';
 
-    params.push(limit);
+    const hasLimit = Number.isFinite(limit) && limit > 0;
+    if (hasLimit) {
+      params.push(limit);
+    }
 
     const result = await query(`
       SELECT 
@@ -204,7 +207,7 @@ async function searchCachedLeads(filters) {
       ORDER BY 
         confidence_score DESC,
         created_at DESC
-      LIMIT $${paramIndex}
+      ${hasLimit ? `LIMIT $${paramIndex}` : ''}
     `, params);
 
     console.log(`   Found ${result.rows.length} cached leads`);

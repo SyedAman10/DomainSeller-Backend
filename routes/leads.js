@@ -527,13 +527,14 @@ router.get('/search', async (req, res) => {
       });
     }
 
-    const limitNum = Math.min(parseInt(limit) || 10, 1000);
+    // Intentionally ignore limit for this endpoint and return all matching leads.
+    const limitNum = null;
     const userIdNum = userId ? parseInt(userId) : null;
 
     console.log(`   Keyword: "${keyword || 'All'}"`);
     console.log(`   Location: ${location || 'Any'}`);
     console.log(`   Industry: ${industry || 'Any'}`);
-    console.log(`   Limit: ${limitNum}`);
+    console.log(`   Limit: none (unlimited)`);
     console.log(`   User ID: ${userIdNum || 'All users'}`);
 
     const leads = await searchCachedLeads({
