@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
+const { requireAuth } = require('../middleware/auth');
 const { scrapeGoogleSERP, crawlURLForContacts, getScrapingSessionStatus, getRecentSessions } = require('../services/apifyService');
 const { classifyLeadsBatch, getClassificationStats, shouldCrawlLead, filterLowQualityLeads } = require('../services/leadClassificationService');
 const { generateLeads, searchCachedLeads, getLeadStats, matchLeadsForDomain, LEAD_ACTORS } = require('../services/smartLeadService');
@@ -879,10 +880,11 @@ router.post('/:id/crawl', async (req, res) => {
  * Smart Lead Generation with Caching
  * 
  * This endpoint uses AI-powered caching:
- * 1. First checks database for existing leads matching the keyword
- * 2. Returns cached leads if enough are found
- * 3. Only scrapes if no cached leads exist or not enough
- * 4. Prevents duplicate lead storage
+ * 1. Requires authenticated user (role-aware)
+ * 2. Checks shared database cache for existing leads matching the keyword
+ * 3. Returns cached leads immediately if any are found (shared across users)
+ * 4. Only scrapes fresh leads if no cached leads exist for that keyword
+ * 5. Prevents duplicate lead storage
  * 
  * Request Body:
  * {
@@ -894,7 +896,7 @@ router.post('/:id/crawl', async (req, res) => {
  *   "forceRefresh": false         // optional - force new scraping
  * }
  */
-router.post('/generate', async (req, res) => {
+router.post('/generate', requireAuth, async (req, res) => {
   const startTime = Date.now();
   
   console.log('\n' + '═'.repeat(80));
@@ -911,9 +913,16 @@ router.post('/generate', async (req, res) => {
       location,
       industry,
       actor,
-      forceRefresh = false,
-      userId  // NEW: Accept userId from request body
+      forceRefresh = false
     } = req.body;
+
+    const userId = req.user.id;
+    const userRole = req.user.role || 'user';
+    const actorToUse = LEAD_ACTORS.LEADS_FINDER;
+
+    if (actor && actor !== actorToUse) {
+      console.log(`⚠️ Actor override requested (${actor}) but forcing ${actorToUse}`);
+    }
 
     // Validation
     if (!keyword || keyword.trim().length === 0) {
@@ -927,8 +936,7 @@ router.post('/generate', async (req, res) => {
           keyword: 'tech companies in NYC',
           count: 5,
           location: 'New York',
-          industry: 'Technology',
-          userId: 1
+          industry: 'Technology'
         }
       });
     }
@@ -949,9 +957,10 @@ router.post('/generate', async (req, res) => {
       count,
       location,
       industry,
-      actor,
+      actor: actorToUse,
       forceRefresh,
-      userId  // Pass userId to service
+      userId,
+      userRole
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -977,6 +986,7 @@ router.post('/generate', async (req, res) => {
       fromCache: result.fromCache || 0,
       fromScraping: result.fromScraping || 0,
       scrapingUsed: result.scrapingUsed,
+      actorUsed: actorToUse,
       cacheEfficiency: result.totalFound > 0 
         ? `${Math.round((result.fromCache || 0) / result.totalFound * 100)}%` 
         : '0%',

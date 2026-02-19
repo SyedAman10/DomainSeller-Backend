@@ -47,7 +47,8 @@ async function generateLeads(options) {
     industry = null,
     actor = DEFAULT_ACTOR,
     forceRefresh = false,
-    userId  // NEW: User ID for multi-tenant support
+    userId,
+    userRole = 'user'
   } = options;
 
   console.log('\n🎯 SMART LEAD GENERATION REQUEST');
@@ -61,81 +62,49 @@ async function generateLeads(options) {
   console.log(`│ Actor: ${actor}`);
   console.log(`│ Force Refresh: ${forceRefresh}`);
   console.log(`│ User ID: ${userId || 'Not specified'}`);
+  console.log(`│ User Role: ${userRole}`);
   console.log('└─────────────────────────────────────────────────────────────────┘');
 
   try {
-    // Step 1: Check database for existing leads matching this keyword
-    if (!forceRefresh) {
+    // Only admin can bypass shared cache with forceRefresh.
+    const canForceRefresh = userRole === 'admin';
+    const useForceRefresh = canForceRefresh && forceRefresh === true;
+
+    // Step 1: Check SHARED database cache for existing leads matching this keyword
+    if (!useForceRefresh) {
       console.log('\n🔍 STEP 1: Checking database for existing leads...');
 
       const cachedLeads = await searchCachedLeads({
         keyword,
         location,
         industry,
-        limit: 100, // Search more than requested to allow rotation
-        userId
+        limit: Math.max(count, 100)
       });
 
-      // If we have leads for this keyword, and the user only asked for a small amount,
-      // we can return them from cache. However, if they want "freshness" or more than we have, we scrape.
-      if (cachedLeads.length >= count && cachedLeads.length > 0) {
-        console.log('\n✅ CACHE HIT - Sufficient leads found!');
+      // Shared cache policy:
+      // If any leads exist for the keyword, return cache for all users.
+      // Only scrape when no cached leads exist at all.
+      if (cachedLeads.length > 0) {
+        console.log('\n✅ CACHE HIT - Returning shared leads');
         console.log('┌─────────────────────────────────────────────────────────────────┐');
         console.log(`│ Found: ${cachedLeads.length} cached leads (requested: ${count})`);
-        console.log('│ Result: Returning from cache 🎉');
+        console.log('│ Result: Returning from cache (no fresh scrape needed)');
         console.log('└─────────────────────────────────────────────────────────────────┘');
-
-        // Randomize the order a bit so same keyword doesn't always return same leads if we have more than count
-        const shuffled = [...cachedLeads].sort(() => 0.5 - Math.random());
 
         return {
           success: true,
           source: 'cache',
-          leads: shuffled.slice(0, count),
+          leads: cachedLeads.slice(0, count),
           totalFound: cachedLeads.length,
           requested: count,
           fromCache: cachedLeads.length,
           scrapingUsed: false
         };
-      } else if (cachedLeads.length > 0) {
-        console.log('\n⚠️  PARTIAL CACHE HIT');
-        console.log('┌─────────────────────────────────────────────────────────────────┐');
-        console.log(`│ Found: ${cachedLeads.length} cached leads (need: ${count})`);
-        console.log(`│ Missing: ${count - cachedLeads.length} leads`);
-        console.log('│ Result: Will scrape additional leads to reach target');
-        console.log('└─────────────────────────────────────────────────────────────────┘');
-
-        // Scrape more to ensure we get NEW leads
-        const scrapeCount = Math.max(count, 10); // Scrape at least 10 to rotate
-        const scrapedLeads = await scrapeLeads({
-          keyword,
-          location,
-          industry,
-          count: scrapeCount,
-          actor,
-          userId
-        });
-
-        // Combine and return
-        const allLeads = [...cachedLeads, ...scrapedLeads];
-        // Deduplicate by ID in case any were returned by both
-        const uniqueLeads = Array.from(new Map(allLeads.map(l => [l.id, l])).values());
-
-        return {
-          success: true,
-          source: 'hybrid',
-          leads: uniqueLeads.slice(0, count),
-          totalFound: uniqueLeads.length,
-          requested: count,
-          fromCache: cachedLeads.length,
-          fromScraping: scrapedLeads.length,
-          scrapingUsed: true
-        };
       } else {
         console.log('\n❌ CACHE MISS - No cached leads found');
       }
     } else {
-      console.log('\n🔄 FORCE REFRESH - Skipping cache check');
+      console.log('\n🔄 FORCE REFRESH (admin) - Skipping cache check');
     }
 
     // Step 2: No cached leads found or force refresh - scrape new leads
