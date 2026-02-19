@@ -406,6 +406,56 @@ async function scrapeLeads(options) {
  */
 function prepareActorInput(actor, options) {
   const { keyword, location, industry, count } = options;
+  const US_STATES = new Set([
+    'alabama', 'alaska', 'arizona', 'arkansas', 'california', 'colorado', 'connecticut', 'delaware',
+    'florida', 'georgia', 'hawaii', 'idaho', 'illinois', 'indiana', 'iowa', 'kansas', 'kentucky',
+    'louisiana', 'maine', 'maryland', 'massachusetts', 'michigan', 'minnesota', 'mississippi', 'missouri',
+    'montana', 'nebraska', 'nevada', 'new hampshire', 'new jersey', 'new mexico', 'new york',
+    'north carolina', 'north dakota', 'ohio', 'oklahoma', 'oregon', 'pennsylvania', 'rhode island',
+    'south carolina', 'south dakota', 'tennessee', 'texas', 'utah', 'vermont', 'virginia', 'washington',
+    'west virginia', 'wisconsin', 'wyoming', 'district of columbia'
+  ]);
+  const COUNTRY_MAP = {
+    us: 'united states',
+    usa: 'united states',
+    'u s': 'united states',
+    uk: 'united kingdom',
+    uae: 'united arab emirates'
+  };
+
+  const normalizeLeadFinderLocation = (rawLocation) => {
+    if (!rawLocation) return null;
+
+    let normalized = String(rawLocation)
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/[.]+/g, '');
+
+    normalized = COUNTRY_MAP[normalized] || normalized;
+
+    // Handle "state, country" style
+    if (normalized.includes(',')) {
+      const parts = normalized.split(',').map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        const region = parts[0];
+        const countryRaw = parts[parts.length - 1];
+        const country = COUNTRY_MAP[countryRaw] || countryRaw;
+        if (country === 'united states') return `${region}, us`;
+        return `${region}, ${country}`;
+      }
+    }
+
+    // Handle bare US state like "california"
+    if (US_STATES.has(normalized)) return `${normalized}, us`;
+
+    // Handle bare country names
+    if (normalized === 'united states' || normalized === 'united kingdom' || normalized === 'india' || normalized === 'canada') {
+      return normalized;
+    }
+
+    return null;
+  };
 
   // Map common keywords to Apify's exact industry names
   const getIndustryFromKeyword = (kw) => {
@@ -462,7 +512,12 @@ function prepareActorInput(actor, options) {
 
       // Prefer explicit location, otherwise infer "in <location>" from keyword
       const inferredLocationMatch = (keyword || '').match(/\bin\s+([a-zA-Z\s,.-]+)$/i);
-      const contactLocation = location || (inferredLocationMatch ? inferredLocationMatch[1].trim() : null);
+      const rawLocation = location || (inferredLocationMatch ? inferredLocationMatch[1].trim() : null);
+      const contactLocation = normalizeLeadFinderLocation(rawLocation);
+
+      if (rawLocation && !contactLocation) {
+        console.warn(`⚠️ Skipping invalid contact_location "${rawLocation}" for leads-finder actor`);
+      }
 
       return {
         // Respect requested limit to avoid over-generation.
