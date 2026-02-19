@@ -70,38 +70,80 @@ async function generateLeads(options) {
     const canForceRefresh = userRole === 'admin';
     const useForceRefresh = canForceRefresh && forceRefresh === true;
 
-    // Step 1: Check SHARED database cache for existing leads matching this keyword
+    // Step 1: Check cache with user-aware behavior
     if (!useForceRefresh) {
-      console.log('\n🔍 STEP 1: Checking database for existing leads...');
+      console.log('\n🔍 STEP 1: Checking user-specific leads for this keyword...');
 
-      const cachedLeads = await searchCachedLeads({
+      const userCachedLeads = await searchCachedLeads({
         keyword,
         location,
         industry,
-        limit: Math.max(count, 100)
+        limit: Math.max(count, 100),
+        userId
       });
 
-      // Shared cache policy:
-      // If any leads exist for the keyword, return cache for all users.
-      // Only scrape when no cached leads exist at all.
-      if (cachedLeads.length > 0) {
-        console.log('\n✅ CACHE HIT - Returning shared leads');
+      // If the same user already has leads for this keyword, fetch fresh leads.
+      if (userCachedLeads.length > 0) {
+        console.log('\n🔄 USER CACHE HIT - Scraping fresh leads for same user');
         console.log('┌─────────────────────────────────────────────────────────────────┐');
-        console.log(`│ Found: ${cachedLeads.length} cached leads (requested: ${count})`);
-        console.log('│ Result: Returning from cache (no fresh scrape needed)');
+        console.log(`│ User already has: ${userCachedLeads.length} leads for this keyword`);
+        console.log('│ Result: Forcing fresh scrape for this user');
         console.log('└─────────────────────────────────────────────────────────────────┘');
+
+        // Scrape more than requested so we can remove already-owned leads.
+        const scrapeCount = Math.max(count * 2, 20);
+        const scrapedLeads = await scrapeLeads({
+          keyword,
+          location,
+          industry,
+          count: scrapeCount,
+          actor,
+          userId
+        });
+
+        const existingIds = new Set(userCachedLeads.map((lead) => lead.id));
+        const freshLeads = scrapedLeads.filter((lead) => !existingIds.has(lead.id));
 
         return {
           success: true,
-          source: 'cache',
-          leads: cachedLeads.slice(0, count),
-          totalFound: cachedLeads.length,
+          source: 'scraping',
+          leads: freshLeads.slice(0, count),
+          totalFound: freshLeads.length,
           requested: count,
-          fromCache: cachedLeads.length,
-          scrapingUsed: false
+          fromCache: userCachedLeads.length,
+          fromScraping: freshLeads.length,
+          scrapingUsed: true
         };
       } else {
-        console.log('\n❌ CACHE MISS - No cached leads found');
+        console.log('\nℹ️ USER CACHE MISS - Checking shared cache...');
+
+        const sharedCachedLeads = await searchCachedLeads({
+          keyword,
+          location,
+          industry,
+          limit: Math.max(count, 100)
+        });
+
+        // If this user does not have these leads yet, they can use shared cache.
+        if (sharedCachedLeads.length > 0) {
+          console.log('\n✅ SHARED CACHE HIT - Returning leads from other users');
+          console.log('┌─────────────────────────────────────────────────────────────────┐');
+          console.log(`│ Found: ${sharedCachedLeads.length} shared cached leads (requested: ${count})`);
+          console.log('│ Result: Returning shared cache');
+          console.log('└─────────────────────────────────────────────────────────────────┘');
+
+          return {
+            success: true,
+            source: 'cache',
+            leads: sharedCachedLeads.slice(0, count),
+            totalFound: sharedCachedLeads.length,
+            requested: count,
+            fromCache: sharedCachedLeads.length,
+            scrapingUsed: false
+          };
+        }
+
+        console.log('\n❌ SHARED CACHE MISS - No cached leads found');
       }
     } else {
       console.log('\n🔄 FORCE REFRESH (admin) - Skipping cache check');
