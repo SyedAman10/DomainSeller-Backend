@@ -4,6 +4,50 @@ require('dotenv').config();
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const AI_MODEL = process.env.AI_MODEL || 'gpt-4o-mini'; // or gpt-3.5-turbo for cheaper
 
+const extractRequiredToken = (customInstructions = '') => {
+  if (!customInstructions || typeof customInstructions !== 'string') {
+    return null;
+  }
+
+  const everyMessagePattern = /(every message|each message|every reply|each reply|in all messages)/i;
+  if (!everyMessagePattern.test(customInstructions)) {
+    return null;
+  }
+
+  if (/\bbuddy\b/i.test(customInstructions)) {
+    return 'buddy';
+  }
+
+  const quotedTokenMatch = customInstructions.match(/["']([a-zA-Z][a-zA-Z0-9_-]{1,30})["']/);
+  if (quotedTokenMatch) {
+    return quotedTokenMatch[1];
+  }
+
+  return null;
+};
+
+const enforceRequiredTokenInReply = (reply = '', token = null) => {
+  if (!reply || !token) {
+    return reply;
+  }
+
+  const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const tokenRegex = new RegExp(`\\b${escapedToken}\\b`, 'i');
+  if (tokenRegex.test(reply)) {
+    return reply;
+  }
+
+  const signatureMatch = reply.match(/\n\s*Best regards,\s*\n/i);
+  if (!signatureMatch || signatureMatch.index === undefined) {
+    return `${reply.trim()}\n\nThanks, ${token}.`;
+  }
+
+  const signatureStart = signatureMatch.index;
+  const body = reply.slice(0, signatureStart).trimEnd();
+  const signature = reply.slice(signatureStart).trimStart();
+  return `${body}\n\nThanks, ${token}.\n\n${signature}`;
+};
+
 /**
  * Generate AI response to buyer's email using OpenAI
  * @param {Object} context - Email context
@@ -283,14 +327,19 @@ REMINDER: If this message contains a price offer below asking price, you MUST sa
     );
 
     const aiReply = response.data.choices[0].message.content.trim();
+    const requiredToken = extractRequiredToken(customInstructions);
+    const finalReply = enforceRequiredTokenInReply(aiReply, requiredToken);
 
     console.log('✅ AI Response Generated');
-    console.log(`   Length: ${aiReply.length} characters`);
+    console.log(`   Length: ${finalReply.length} characters`);
     console.log(`   Tokens Used: ${response.data.usage.total_tokens}`);
+    if (requiredToken && finalReply !== aiReply) {
+      console.log(`   Enforced custom instruction token: "${requiredToken}"`);
+    }
 
     return {
       success: true,
-      reply: aiReply,
+      reply: finalReply,
       tokensUsed: response.data.usage.total_tokens,
       model: AI_MODEL
     };
@@ -312,9 +361,12 @@ Looking forward to hearing from you!
 Best regards,
 ${sellerName}${sellerEmail ? `\n${sellerEmail}` : ''}`;
 
+    const requiredToken = extractRequiredToken(campaignInfo.customInstructions || '');
+    const finalFallbackResponse = enforceRequiredTokenInReply(fallbackResponse, requiredToken);
+
     return {
       success: false,
-      reply: fallbackResponse,
+      reply: finalFallbackResponse,
       error: error.response?.data?.error?.message || error.message,
       usingFallback: true
     };
