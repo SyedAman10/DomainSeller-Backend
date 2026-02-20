@@ -92,7 +92,9 @@ const generateAIResponse = async (context) => {
       responseStyle = 'professional',
       responseLength = 'medium',
       customInstructions = '',
-      highlightFeatures = ''
+      highlightFeatures = '',
+      expiryDate,
+      registrar
     } = campaignInfo;
 
     // Build pricing guidance
@@ -175,6 +177,16 @@ ${highlightFeatures}
 `;
     }
 
+    let domainFactsSection = '';
+    if (registrar || expiryDate) {
+      domainFactsSection = `
+DOMAIN REGISTRATION FACTS:
+- Registrar: ${registrar || 'Not specified'}
+- Expiry Date: ${expiryDate || 'Not specified'}
+- If buyer asks about registrar or expiry, use these exact details.
+`;
+    }
+
     // Build conversation context
     const messages = [
       {
@@ -190,6 +202,8 @@ ${lengthInstructions[responseLength]}
 ${pricingGuidance}
 
 ${featuresSection}
+
+${domainFactsSection}
 
 CORE SELLING POINTS (if not mentioned above):
 - SEO Benefits: Premium domains rank better

@@ -100,7 +100,11 @@ router.post('/mailgun', async (req, res) => {
         c.response_length,
         c.custom_instructions,
         c.highlight_features,
-        d.value as domain_value
+        c.ai_expiry_date,
+        c.ai_registrar,
+        d.value as domain_value,
+        d.expiry_date as domain_expiry_date,
+        d.registrar as domain_registrar
        FROM campaigns c
        LEFT JOIN sent_emails se ON se.campaign_id = c.campaign_id
        LEFT JOIN scheduled_emails sch ON sch.campaign_id = c.campaign_id
@@ -275,7 +279,9 @@ router.post('/mailgun', async (req, res) => {
         responseStyle: campaign.response_style,
         responseLength: campaign.response_length,
         customInstructions: campaign.custom_instructions,
-        highlightFeatures: campaign.highlight_features
+        highlightFeatures: campaign.highlight_features,
+        expiryDate: campaign.ai_expiry_date || campaign.domain_expiry_date,
+        registrar: campaign.ai_registrar || campaign.domain_registrar
       }
     });
 
@@ -1294,4 +1300,3 @@ router.get('/webhook-status', async (req, res) => {
 });
 
 module.exports = router;
-

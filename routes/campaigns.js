@@ -1442,7 +1442,10 @@ router.put('/:campaignId/ai-settings', async (req, res) => {
       responseStyle,
       responseLength,
       customInstructions,
-      highlightFeatures
+      highlightFeatures,
+      expiryDate,
+      registrar,
+      registrarInformation
     } = req.body;
 
     // Build dynamic UPDATE query
@@ -1464,8 +1467,8 @@ router.put('/:campaignId/ai-settings', async (req, res) => {
 
     if (minimumPrice !== undefined) {
       updates.push(`minimum_price = $${paramIndex++}`);
-      values.push(minimumPrice || null);
-      console.log(`   Minimum price: $${minimumPrice || 'not set'}`);
+      values.push(minimumPrice === '' ? null : minimumPrice);
+      console.log(`   Minimum price: ${minimumPrice === '' ? 'not set' : `$${minimumPrice}`}`);
     }
 
     if (negotiationStrategy) {
@@ -1498,6 +1501,26 @@ router.put('/:campaignId/ai-settings', async (req, res) => {
       console.log(`   Highlight features: ${highlightFeatures ? 'set' : 'none'}`);
     }
 
+    if (expiryDate !== undefined) {
+      if (expiryDate && Number.isNaN(Date.parse(expiryDate))) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid expiryDate',
+          message: 'expiryDate must be a valid date (ISO format recommended)'
+        });
+      }
+      updates.push(`ai_expiry_date = $${paramIndex++}`);
+      values.push(expiryDate || null);
+      console.log(`   Expiry date: ${expiryDate || 'not set'}`);
+    }
+
+    const effectiveRegistrar = registrar !== undefined ? registrar : registrarInformation;
+    if (effectiveRegistrar !== undefined) {
+      updates.push(`ai_registrar = $${paramIndex++}`);
+      values.push(effectiveRegistrar || null);
+      console.log(`   Registrar: ${effectiveRegistrar || 'not set'}`);
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({
         success: false,
@@ -1528,7 +1551,11 @@ router.put('/:campaignId/ai-settings', async (req, res) => {
     res.json({
       success: true,
       message: 'AI settings updated successfully',
-      campaign: result.rows[0]
+      campaign: {
+        ...result.rows[0],
+        expiryDate: result.rows[0].ai_expiry_date,
+        registrar: result.rows[0].ai_registrar
+      }
     });
   } catch (error) {
     console.error('Error updating AI settings:', error);
@@ -1561,7 +1588,9 @@ router.get('/:campaignId/ai-settings', async (req, res) => {
         response_style,
         response_length,
         custom_instructions,
-        highlight_features
+        highlight_features,
+        ai_expiry_date,
+        ai_registrar
        FROM campaigns 
        WHERE campaign_id = $1`,
       [campaignId]
@@ -1574,9 +1603,14 @@ router.get('/:campaignId/ai-settings', async (req, res) => {
       });
     }
 
+    const settings = result.rows[0];
     res.json({
       success: true,
-      settings: result.rows[0]
+      settings: {
+        ...settings,
+        expiryDate: settings.ai_expiry_date,
+        registrar: settings.ai_registrar
+      }
     });
   } catch (error) {
     console.error('Error fetching AI settings:', error);
