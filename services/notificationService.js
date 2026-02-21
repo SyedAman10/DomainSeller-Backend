@@ -516,243 +516,195 @@ async function notifyAutoResponse({
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { 
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-      line-height: 1.6; 
-      color: #1e293b; 
-      background: #f1f5f9;
+    body {
       margin: 0;
-      padding: 20px;
+      padding: 24px;
+      background: #eef2f7;
+      color: #0f172a;
+      font-family: "Segoe UI", Arial, sans-serif;
     }
-    .container { 
-      max-width: 650px; 
-      margin: 0 auto; 
-      background: white;
+    .wrapper {
+      width: 100%;
+      background: #eef2f7;
+    }
+    .card {
+      max-width: 680px;
+      margin: 0 auto;
+      background: #ffffff;
       border-radius: 16px;
       overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    }
-    .header { 
-      background: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%); 
-      color: white; 
-      padding: 40px 30px;
-      position: relative;
-    }
-    .header::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 4px;
-      background: linear-gradient(90deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
-    }
-    .header h2 {
-      margin: 0 0 10px 0;
-      font-size: 28px;
-      font-weight: 600;
-    }
-    .header p {
-      margin: 5px 0;
-      opacity: 0.95;
-      font-size: 16px;
-    }
-    .content { 
-      padding: 35px 30px;
-      background: white;
-    }
-    .success-badge { 
-      background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-      border-left: 4px solid #10b981;
-      padding: 16px 20px;
-      border-radius: 8px;
-      margin: 0 0 25px 0;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .success-badge strong {
-      color: #065f46;
-    }
-    .success-icon {
-      font-size: 24px;
-      flex-shrink: 0;
-    }
-    .message-box { 
-      background: #f8fafc;
-      padding: 20px;
-      margin: 20px 0;
-      border-left: 5px solid #10b981;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
-    }
-    .message-box .label {
-      font-weight: 600;
-      color: #059669;
-      margin-bottom: 8px;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .message-box .message-content {
-      background: white;
-      padding: 15px;
-      border-radius: 6px;
-      margin-top: 12px;
-      color: #334155;
-      line-height: 1.7;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
       border: 1px solid #e2e8f0;
     }
-    .ai-response { 
-      background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-      padding: 20px;
-      margin: 25px 0;
-      border-left: 5px solid #1e40af;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(30, 64, 175, 0.15);
+    .hero {
+      padding: 28px 32px;
+      background: linear-gradient(120deg, #0f172a 0%, #1e293b 45%, #0f766e 100%);
+      color: #f8fafc;
     }
-    .ai-response .label {
-      font-weight: 600;
-      color: #1e3a8a;
-      margin-bottom: 12px;
+    .hero h1 {
+      margin: 0 0 8px 0;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .hero .meta {
       font-size: 15px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      opacity: 0.9;
+      margin: 4px 0;
     }
-    .ai-response .response-content {
-      background: white;
-      padding: 15px;
-      border-radius: 6px;
-      color: #334155;
-      line-height: 1.7;
-      border: 1px solid #93c5fd;
-    }
-    .button-container {
-      text-align: center;
-      margin: 35px 0 25px 0;
-      padding: 20px 0;
-    }
-    .button { 
+    .pill {
       display: inline-block;
-      padding: 14px 32px;
-      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-      color: white !important;
-      text-decoration: none;
-      border-radius: 8px;
-      margin: 8px 6px;
+      margin-top: 10px;
+      background: rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
       font-weight: 600;
-      font-size: 15px;
-      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
-      transition: all 0.3s ease;
     }
-    .button:hover { 
-      background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
-      box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
-      transform: translateY(-2px);
+    .body {
+      padding: 28px 32px 8px 32px;
+    }
+    .badge {
+      background: #ecfdf3;
+      border: 1px solid #bbf7d0;
+      color: #14532d;
+      padding: 14px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 18px;
+    }
+    .section {
+      margin: 18px 0;
+      padding: 16px 18px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #475569;
+      margin-bottom: 10px;
+    }
+    .section-meta {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 8px;
+    }
+    .message {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 14px;
+      color: #0f172a;
+      line-height: 1.7;
+      font-size: 14px;
+    }
+    .highlight {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+    }
+    .divider {
+      height: 1px;
+      background: #e2e8f0;
+      margin: 20px 0;
+    }
+    .cta {
+      text-align: center;
+      padding: 16px 0 26px 0;
+    }
+    .cta a {
+      display: inline-block;
+      background: #0f766e;
+      color: #ffffff !important;
+      text-decoration: none;
+      padding: 12px 26px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      box-shadow: 0 6px 16px rgba(15, 118, 110, 0.25);
     }
     .note {
       text-align: center;
-      color: #64748b;
-      font-size: 14px;
-      margin: 20px 0 0 0;
-      line-height: 1.6;
-    }
-    .footer { 
-      text-align: center;
-      padding: 30px;
-      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
-      color: #cbd5e1;
       font-size: 13px;
+      color: #64748b;
+      margin: 0 0 18px 0;
     }
-    .footer p {
-      margin: 8px 0;
-      line-height: 1.6;
+    .footer {
+      padding: 18px 24px 28px 24px;
+      background: #0f172a;
+      color: #cbd5e1;
+      text-align: center;
+      font-size: 12px;
     }
     .footer strong {
-      color: #fbbf24;
-      font-weight: 600;
-    }
-    .divider {
-      height: 2px;
-      background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%);
-      margin: 25px 0;
+      color: #f8fafc;
     }
     @media only screen and (max-width: 600px) {
-      body { padding: 10px; }
-      .header { padding: 30px 20px; }
-      .content { padding: 25px 20px; }
-      .button { display: block; margin: 10px 0; }
+      body { padding: 12px; }
+      .hero, .body { padding: 22px; }
+      .cta a { display: block; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h2>${requiresApproval ? '🔔 APPROVAL REQUIRED!' : '✅ Auto-Reply Sent Successfully!'}</h2>
-      <p>Campaign: <strong>${campaignName}</strong></p>
-      <p>Domain: <strong>${domainName}</strong></p>
-      ${requiresApproval ? `<p style="background:rgba(255,255,255,0.2);padding:10px;border-radius:6px;margin-top:10px;">💰 Price: $${askingPrice} USD</p>` : ''}
-    </div>
-    
-    <div class="content">
-      ${requiresApproval ? '' : `
-      <div class="success-badge">
-        <span class="success-icon">✅</span>
-        <div>
-          <strong>Automated Response</strong> - AI has successfully replied to this buyer. Auto-response is ON.
-        </div>
+  <div class="wrapper">
+    <div class="card">
+      <div class="hero">
+        <h1>${requiresApproval ? 'Approval Required' : 'Auto-Reply Sent'}</h1>
+        <div class="meta">Campaign: <strong>${campaignName}</strong></div>
+        <div class="meta">Domain: <strong>${domainName}</strong></div>
+        ${requiresApproval ? `<div class="pill">Price: $${askingPrice} USD</div>` : `<div class="pill">Auto-response ON</div>`}
       </div>
-      `}
-      
-      ${approvalHTML}
-      
-      <div class="message-box">
-        <div class="label">
-          <span>👤</span>
-          <span>Latest Buyer Message</span>
+
+      <div class="body">
+        ${requiresApproval ? '' : `<div class="badge">Automated response sent successfully.</div>`}
+
+        ${approvalHTML}
+
+        <div class="section">
+          <div class="section-title">Latest Buyer Message</div>
+          <div class="section-meta">From: <strong>${buyerName} &lt;${buyerEmail}&gt;</strong></div>
+          <div class="message">
+            ${buyerMessage.replace(/
+/g, '<br>')}
+          </div>
         </div>
-        <div style="color: #64748b; font-size: 14px; margin: 8px 0;">
-          From: <strong style="color: #059669;">${buyerName} &lt;${buyerEmail}&gt;</strong>
+
+        <div class="section highlight">
+          <div class="section-title">AI Response (${requiresApproval ? 'Sent with Pending Message' : 'Already Sent'})</div>
+          <div class="message">
+            ${aiResponse.replace(/
+/g, '<br>')}
+          </div>
         </div>
-        <div class="message-content">
-          ${buyerMessage.replace(/\n/g, '<br>')}
+
+        ${threadHTML}
+
+        <div class="divider"></div>
+
+        <div class="cta">
+          <a href="${dashboardUrl}/dashboard?campaignId=${campaignId}&view=conversations&buyer=${encodeURIComponent(buyerEmail)}">
+            View Full Conversation
+          </a>
         </div>
+
+        <p class="note">
+          ${requiresApproval ?
+            '<strong>Action required:</strong> Please review and approve the Stripe payment link request above.' :
+            'This is a confirmation. The AI response was sent automatically to the buyer.'
+          }
+        </p>
       </div>
-      
-      <div class="divider"></div>
-      
-      <div class="ai-response">
-        <div class="label">
-          <span>🤖</span>
-          <span>AI Response (${requiresApproval ? 'Sent with Pending Message' : 'Already Sent'})</span>
-        </div>
-        <div class="response-content">
-          ${aiResponse.replace(/\n/g, '<br>')}
-        </div>
+
+      <div class="footer">
+        <div><strong>DomainSeller</strong> AI Agent</div>
+        <div>Intelligent Email Management ? Powered by AI</div>
       </div>
-      
-      ${threadHTML}
-      
-      <div class="button-container">
-        <a href="${dashboardUrl}/dashboard?campaignId=${campaignId}&view=conversations&buyer=${encodeURIComponent(buyerEmail)}" class="button">
-          💬 View Full Conversation
-        </a>
-      </div>
-      
-      <p class="note">
-        ${requiresApproval ? 
-          '⏳ <strong>Action Required:</strong> Please review and approve the Stripe payment link request above.' : 
-          '📊 This is a confirmation notification. The AI response has been automatically sent to the buyer.'
-        }
-      </p>
-    </div>
-    
-    <div class="footer">
-      <p><strong>DomainSeller</strong> AI Agent</p>
-      <p>Intelligent Email Management • Powered by AI</p>
-      <p style="margin-top: 15px; opacity: 0.8;">You received this as confirmation that AI is handling your email replies automatically.</p>
     </div>
   </div>
 </body>
