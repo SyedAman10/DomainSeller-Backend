@@ -670,16 +670,14 @@ async function notifyAutoResponse({
           <div class="section-title">Latest Buyer Message</div>
           <div class="section-meta">From: <strong>${buyerName} &lt;${buyerEmail}&gt;</strong></div>
           <div class="message">
-            ${buyerMessage.replace(/
-/g, '<br>')}
+            ${buyerMessage.replace(/\n/g, '<br>')}
           </div>
         </div>
 
         <div class="section highlight">
           <div class="section-title">AI Response (${requiresApproval ? 'Sent with Pending Message' : 'Already Sent'})</div>
           <div class="message">
-            ${aiResponse.replace(/
-/g, '<br>')}
+            ${aiResponse.replace(/\n/g, '<br>')}
           </div>
         </div>
 
