@@ -941,7 +941,13 @@ router.post('/approvals/:id/approve', async (req, res) => {
   console.log(`✅ Approving Stripe request ${req.params.id}...`);
 
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid approval ID'
+      });
+    }
     const { approvedBy } = req.body;
 
     // Get approval request
@@ -1083,7 +1089,18 @@ router.get('/approvals/:id/approve', async (req, res) => {
   console.log('════════════════════════════════════════════════════════════');
 
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) {
+      return res.status(400).send(`
+        <html>
+          <head><title>Invalid Request</title></head>
+          <body style="font-family:Arial;padding:50px;text-align:center;">
+            <h1>⚠️ Invalid Approval ID</h1>
+            <p>The approval link is missing or invalid. Please open your dashboard and try again.</p>
+          </body>
+        </html>
+      `);
+    }
 
     // Get approval request
     const approval = await query(
@@ -1326,7 +1343,13 @@ router.post('/approvals/:id/decline', async (req, res) => {
   console.log(`❌ Declining Stripe request ${req.params.id}...`);
 
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid approval ID'
+      });
+    }
     const { declinedBy, notes } = req.body;
 
     await query(
@@ -1360,7 +1383,18 @@ router.get('/approvals/:id/decline', async (req, res) => {
   console.log(`❌ Declining Stripe request ${req.params.id} (via GET)...`);
 
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) {
+      return res.status(400).send(`
+        <html>
+          <head><title>Invalid Request</title></head>
+          <body style="font-family:Arial;padding:50px;text-align:center;">
+            <h1>⚠️ Invalid Approval ID</h1>
+            <p>The approval link is missing or invalid. Please open your dashboard and try again.</p>
+          </body>
+        </html>
+      `);
+    }
     const { reason } = req.query;
 
     const result = await query(
@@ -2310,4 +2344,3 @@ router.get('/webhook/test', (req, res) => {
 });
 
 module.exports = router;
-

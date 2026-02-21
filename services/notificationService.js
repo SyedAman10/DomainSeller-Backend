@@ -350,6 +350,7 @@ async function notifyAutoResponse({
   userId = null,
   dashboardUrl = 'https://3vltn.com'
 }) {
+  const normalizedApprovalId = (approvalId === null || approvalId === undefined || approvalId === 'null' || approvalId === '') ? null : approvalId;
   // Get API URL for backend endpoints
   const apiUrl = process.env.BACKEND_URL || 'https://api.3vltn.com';
   
@@ -449,7 +450,7 @@ async function notifyAutoResponse({
       `;
       
       approvalHTML = priceNegotiationHTML;
-    } else {
+    } else if (normalizedApprovalId) {
       // Regular payment approval (buyer wants to pay asking price)
     approvalHTML = `
       <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:2px solid #f59e0b;padding:25px;border-radius:12px;margin:25px 0;">
@@ -461,11 +462,11 @@ async function notifyAutoResponse({
           <p style="margin:0;color:#334155;"><strong>📋 Status:</strong> <span style="color:#f59e0b;font-weight:600;">Pending Your Approval</span></p>
         </div>
         <div style="text-align:center;margin:30px 0;">
-            <a href="${apiUrl}/backend/stripe/approvals/${approvalId}/approve" 
+            <a href="${apiUrl}/backend/stripe/approvals/${normalizedApprovalId}/approve" 
              style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);margin:10px;">
             ✅ APPROVE & SEND PAYMENT LINK
           </a>
-            <a href="${apiUrl}/backend/stripe/approvals/${approvalId}/decline" 
+            <a href="${apiUrl}/backend/stripe/approvals/${normalizedApprovalId}/decline" 
                style="display:inline-block;padding:16px 40px;background:#dc2626;color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(220,38,38,0.3);margin:10px;">
               ❌ DECLINE REQUEST
             </a>
@@ -478,9 +479,24 @@ async function notifyAutoResponse({
           </p>
         </div>
       `;
+    } else {
+      approvalHTML = `
+        <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:2px solid #f59e0b;padding:25px;border-radius:12px;margin:25px 0;">
+          <h3 style="margin:0 0 15px 0;color:#92400e;font-size:20px;">⚠️ APPROVAL LINK UNAVAILABLE</h3>
+          <div style="background:white;padding:20px;border-radius:8px;margin:15px 0;">
+            <p style="margin:0;color:#334155;">This request is missing an approval ID. Please open your dashboard to review and take action.</p>
+          </div>
+          <div style="text-align:center;margin:20px 0;">
+            <a href="${dashboardUrl}/dashboard?campaignId=${campaignId}&view=payments" 
+               style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg, #0f766e 0%, #0d9488 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;box-shadow:0 4px 12px rgba(15,118,110,0.3);">
+              Open Dashboard
+            </a>
+          </div>
+        </div>
+      `;
     }
   } else {
-    approvalHTML = `
+    approvalHTML = normalizedApprovalId ? `
       <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:2px solid #f59e0b;padding:25px;border-radius:12px;margin:25px 0;">
         <h3 style="margin:0 0 15px 0;color:#92400e;font-size:20px;">🎯 STRIPE PAYMENT APPROVAL REQUIRED</h3>
         <div style="background:white;padding:20px;border-radius:8px;margin:15px 0;">
@@ -490,11 +506,11 @@ async function notifyAutoResponse({
           <p style="margin:0;color:#334155;"><strong>📋 Status:</strong> <span style="color:#f59e0b;font-weight:600;">Pending Your Approval</span></p>
         </div>
         <div style="text-align:center;margin:30px 0;">
-          <a href="${apiUrl}/backend/stripe/approvals/${approvalId}/approve" 
+          <a href="${apiUrl}/backend/stripe/approvals/${normalizedApprovalId}/approve" 
              style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);margin:10px;">
             ✅ APPROVE & SEND PAYMENT LINK
           </a>
-          <a href="${apiUrl}/backend/stripe/approvals/${approvalId}/decline" 
+          <a href="${apiUrl}/backend/stripe/approvals/${normalizedApprovalId}/decline" 
              style="display:inline-block;padding:16px 40px;background:#dc2626;color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(220,38,38,0.3);margin:10px;">
             ❌ DECLINE REQUEST
           </a>
@@ -505,6 +521,19 @@ async function notifyAutoResponse({
         <p style="text-align:center;color:#92400e;font-size:14px;margin:15px 0 0 0;">
           ⏳ Buyer is waiting! Please approve within 24 hours to maintain interest.
         </p>
+      </div>
+    ` : `
+      <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:2px solid #f59e0b;padding:25px;border-radius:12px;margin:25px 0;">
+        <h3 style="margin:0 0 15px 0;color:#92400e;font-size:20px;">⚠️ APPROVAL LINK UNAVAILABLE</h3>
+        <div style="background:white;padding:20px;border-radius:8px;margin:15px 0;">
+          <p style="margin:0;color:#334155;">This request is missing an approval ID. Please open your dashboard to review and take action.</p>
+        </div>
+        <div style="text-align:center;margin:20px 0;">
+          <a href="${dashboardUrl}/dashboard?campaignId=${campaignId}&view=payments" 
+             style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg, #0f766e 0%, #0d9488 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;box-shadow:0 4px 12px rgba(15,118,110,0.3);">
+            Open Dashboard
+          </a>
+        </div>
       </div>
     `;
   }
