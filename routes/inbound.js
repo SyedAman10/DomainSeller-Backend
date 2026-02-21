@@ -248,7 +248,7 @@ router.post('/mailgun', async (req, res) => {
        FROM email_conversations
        WHERE campaign_id = $1 AND buyer_email = $2
        ORDER BY received_at ASC
-       LIMIT 10`,
+       LIMIT 30`,
       [campaign.campaign_id, buyerEmail]
     );
 
