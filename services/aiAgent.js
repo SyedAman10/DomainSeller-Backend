@@ -26,6 +26,52 @@ const extractRequiredToken = (customInstructions = '') => {
   return null;
 };
 
+const normalizeMessage = (message) => {
+  return (message || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const similarityScore = (a, b) => {
+  if (!a || !b) return 0;
+  const aTokens = new Set(a.split(' '));
+  const bTokens = new Set(b.split(' '));
+  if (aTokens.size === 0 || bTokens.size === 0) return 0;
+  let overlap = 0;
+  for (const token of aTokens) {
+    if (bTokens.has(token)) overlap += 1;
+  }
+  return (2 * overlap) / (aTokens.size + bTokens.size);
+};
+
+const isRepeatQuestion = (buyerMessage, conversationHistory = []) => {
+  const normalizedCurrent = normalizeMessage(buyerMessage);
+  if (!normalizedCurrent) return false;
+
+  const recentBuyerMessages = conversationHistory
+    .filter(msg => msg.role === 'buyer')
+    .slice(0, -1)
+    .slice(-6);
+
+  for (const msg of recentBuyerMessages) {
+    const normalizedPrev = normalizeMessage(msg.content);
+    if (!normalizedPrev) continue;
+
+    if (normalizedPrev === normalizedCurrent) {
+      return true;
+    }
+
+    const similarity = similarityScore(normalizedPrev, normalizedCurrent);
+    if (similarity >= 0.85) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const enforceRequiredTokenInReply = (reply = '', token = null) => {
   if (!reply || !token) {
     return reply;
@@ -46,6 +92,67 @@ const enforceRequiredTokenInReply = (reply = '', token = null) => {
   const body = reply.slice(0, signatureStart).trimEnd();
   const signature = reply.slice(signatureStart).trimStart();
   return `${body}\n\nThanks, ${token}.\n\n${signature}`;
+};
+
+const formatDateForReply = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    // Keep ISO-like date strings as-is for exactness.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10);
+    }
+    return trimmed;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+};
+
+const injectBeforeSignature = (reply = '', sentence = '') => {
+  if (!sentence) return reply;
+  const signatureMatch = reply.match(/\n\s*Best regards,\s*\n/i);
+  if (!signatureMatch || signatureMatch.index === undefined) {
+    return `${reply.trim()}\n\n${sentence}`;
+  }
+
+  const signatureStart = signatureMatch.index;
+  const body = reply.slice(0, signatureStart).trimEnd();
+  const signature = reply.slice(signatureStart).trimStart();
+  return `${body}\n\n${sentence}\n\n${signature}`;
+};
+
+const enforceDomainFactsInReply = (reply = '', buyerMessage = '', campaignInfo = {}) => {
+  if (!reply) return reply;
+
+  const lowerBuyer = (buyerMessage || '').toLowerCase();
+  const asksExpiry = /(expiry|expire|expiration|expiry date|when .*expire)/i.test(lowerBuyer);
+  const asksRegistrar = /(registrar|where .*registered|registered with|which registrar)/i.test(lowerBuyer);
+
+  let finalReply = reply;
+  const formattedExpiry = formatDateForReply(campaignInfo.expiryDate);
+  const registrar = (campaignInfo.registrar || '').toString().trim();
+
+  if (asksExpiry && formattedExpiry) {
+    finalReply = finalReply
+      .replace(/\[insert\s+expiry\s+date\s+here\]/gi, formattedExpiry)
+      .replace(/insert\s+expiry\s+date\s+here/gi, formattedExpiry);
+
+    if (!finalReply.includes(formattedExpiry)) {
+      finalReply = injectBeforeSignature(finalReply, `The domain expiry date is ${formattedExpiry}.`);
+    }
+  }
+
+  if (asksRegistrar && registrar) {
+    if (!new RegExp(registrar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(finalReply)) {
+      finalReply = injectBeforeSignature(finalReply, `The registrar is ${registrar}.`);
+    }
+  }
+
+  return finalReply;
 };
 
 /**
@@ -96,6 +203,32 @@ const generateAIResponse = async (context) => {
       expiryDate,
       registrar
     } = campaignInfo;
+
+    if (isRepeatQuestion(buyerMessage, conversationHistory)) {
+      console.log('↩️  Detected repeated buyer question');
+
+      let repeatReply = `Hi ${buyerName},\n\nI already answered that a moment ago, but I'm happy to repeat it.`;
+
+      if (/(registrar|where .*registered|registered with|which registrar)/i.test(buyerMessage) && registrar) {
+        repeatReply += ` The registrar is ${registrar}.`;
+      }
+
+      repeatReply += `\n\nWould you like me to resend any specific details, or are you ready to move forward with the purchase?`;
+
+      repeatReply += `\n\nBest regards,\n${sellerName}${sellerEmail ? `\n${sellerEmail}` : ''}`;
+
+      repeatReply = enforceDomainFactsInReply(repeatReply, buyerMessage, campaignInfo);
+
+      const requiredToken = extractRequiredToken(customInstructions);
+      repeatReply = enforceRequiredTokenInReply(repeatReply, requiredToken);
+
+      return {
+        success: true,
+        reply: repeatReply,
+        tokensUsed: 0,
+        model: 'local'
+      };
+    }
 
     // Build pricing guidance
     let pricingGuidance = '';
@@ -342,7 +475,8 @@ REMINDER: If this message contains a price offer below asking price, you MUST sa
 
     const aiReply = response.data.choices[0].message.content.trim();
     const requiredToken = extractRequiredToken(customInstructions);
-    const finalReply = enforceRequiredTokenInReply(aiReply, requiredToken);
+    let finalReply = enforceRequiredTokenInReply(aiReply, requiredToken);
+    finalReply = enforceDomainFactsInReply(finalReply, buyerMessage, campaignInfo);
 
     console.log('✅ AI Response Generated');
     console.log(`   Length: ${finalReply.length} characters`);
@@ -376,7 +510,8 @@ Best regards,
 ${sellerName}${sellerEmail ? `\n${sellerEmail}` : ''}`;
 
     const requiredToken = extractRequiredToken(campaignInfo.customInstructions || '');
-    const finalFallbackResponse = enforceRequiredTokenInReply(fallbackResponse, requiredToken);
+    let finalFallbackResponse = enforceRequiredTokenInReply(fallbackResponse, requiredToken);
+    finalFallbackResponse = enforceDomainFactsInReply(finalFallbackResponse, buyerMessage, campaignInfo);
 
     return {
       success: false,

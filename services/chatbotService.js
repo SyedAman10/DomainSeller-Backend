@@ -86,6 +86,60 @@ const CHATBOT_INTENTS = {
   }
 };
 
+const normalizeMessage = (message) => {
+  return (message || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const similarityScore = (a, b) => {
+  if (!a || !b) return 0;
+  const aTokens = new Set(a.split(' '));
+  const bTokens = new Set(b.split(' '));
+  if (aTokens.size === 0 || bTokens.size === 0) return 0;
+  let overlap = 0;
+  for (const token of aTokens) {
+    if (bTokens.has(token)) overlap += 1;
+  }
+  return (2 * overlap) / (aTokens.size + bTokens.size);
+};
+
+const isRepeatQuestion = (userMessage, conversationHistory) => {
+  const normalizedCurrent = normalizeMessage(userMessage);
+  if (!normalizedCurrent) return false;
+
+  const recentUserMessages = conversationHistory
+    .filter(msg => msg.role === 'user')
+    .slice(0, -1)
+    .slice(-6);
+
+  for (const msg of recentUserMessages) {
+    const normalizedPrev = normalizeMessage(msg.content);
+    if (!normalizedPrev) continue;
+
+    if (normalizedPrev === normalizedCurrent) {
+      return true;
+    }
+
+    const similarity = similarityScore(normalizedPrev, normalizedCurrent);
+    if (similarity >= 0.85) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const buildRepeatResponse = () => {
+  return {
+    answer: "I already answered that a moment ago, but I can repeat it if you want.",
+    simplify: "",
+    engage: "Do you want me to resend the registrar details, or should we move forward with listing the domain for sale?"
+  };
+};
+
 /**
  * Match user message to an intent
  * @param {String} userMessage - The user's message
@@ -128,6 +182,17 @@ const generateChatbotResponse = async ({
   try {
     if (!OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY not configured');
+    }
+
+    // Handle repeated questions politely and steer toward sale
+    if (isRepeatQuestion(userMessage, conversationHistory)) {
+      console.log('   ↩️ Detected repeated question');
+      return {
+        success: true,
+        response: buildRepeatResponse(),
+        intent: 'repeat_question',
+        shouldScore: true
+      };
     }
 
     // First, try to match a specific intent
