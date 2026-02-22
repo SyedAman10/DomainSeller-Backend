@@ -77,244 +77,156 @@ async function notifyNewReply({
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { 
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-      line-height: 1.6; 
-      color: #1e293b; 
-      background: #f1f5f9;
+    body {
       margin: 0;
-      padding: 20px;
+      padding: 24px;
+      background: #f4f6f8;
+      color: #0f172a;
+      font-family: "Segoe UI", Arial, sans-serif;
     }
-    .container { 
-      max-width: 650px; 
-      margin: 0 auto; 
-      background: white;
+    .card {
+      max-width: 680px;
+      margin: 0 auto;
+      background: #ffffff;
       border-radius: 16px;
       overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    }
-    .header { 
-      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1e40af 100%); 
-      color: white; 
-      padding: 40px 30px;
-      position: relative;
-    }
-    .header::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 4px;
-      background: linear-gradient(90deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
-    }
-    .header h2 {
-      margin: 0 0 10px 0;
-      font-size: 28px;
-      font-weight: 600;
-    }
-    .header p {
-      margin: 5px 0;
-      opacity: 0.9;
-      font-size: 16px;
-    }
-    .content { 
-      padding: 35px 30px;
-      background: white;
-    }
-    .info-badge { 
-      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-      border-left: 4px solid #f59e0b;
-      padding: 16px 20px;
-      border-radius: 8px;
-      margin: 0 0 25px 0;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .info-badge strong {
-      color: #92400e;
-    }
-    .info-icon {
-      font-size: 24px;
-      flex-shrink: 0;
-    }
-    .message-box { 
-      background: #f8fafc;
-      padding: 20px;
-      margin: 20px 0;
-      border-left: 5px solid #1e40af;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(30, 64, 175, 0.1);
-    }
-    .message-box .label {
-      font-weight: 600;
-      color: #1e40af;
-      margin-bottom: 8px;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .message-box .message-content {
-      background: white;
-      padding: 15px;
-      border-radius: 6px;
-      margin-top: 12px;
-      color: #334155;
-      line-height: 1.7;
       border: 1px solid #e2e8f0;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
     }
-    .ai-response { 
-      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-      padding: 20px;
-      margin: 25px 0;
-      border-left: 5px solid #f59e0b;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+    .header {
+      padding: 28px 32px;
+      background: linear-gradient(120deg, #0f172a 0%, #1f2937 55%, #0f766e 100%);
+      color: #f8fafc;
     }
-    .ai-response .label {
+    .header h1 {
+      margin: 0 0 6px 0;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .header .meta {
+      font-size: 14px;
+      opacity: 0.9;
+      margin: 3px 0;
+    }
+    .content {
+      padding: 28px 32px 10px 32px;
+    }
+    .badge {
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      color: #9a3412;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
       font-weight: 600;
-      color: #92400e;
-      margin-bottom: 12px;
-      font-size: 15px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      margin-bottom: 18px;
     }
-    .ai-response .response-content {
-      background: white;
-      padding: 15px;
-      border-radius: 6px;
-      color: #334155;
+    .section {
+      margin: 18px 0;
+      padding: 16px 18px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #475569;
+      margin-bottom: 10px;
+    }
+    .section-meta {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 8px;
+    }
+    .message {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 14px;
+      color: #0f172a;
       line-height: 1.7;
-      border: 1px solid #fcd34d;
+      font-size: 14px;
     }
-    .button-container {
+    .cta {
       text-align: center;
-      margin: 35px 0 25px 0;
-      padding: 20px 0;
+      padding: 18px 0 26px 0;
     }
-    .button { 
+    .cta a {
       display: inline-block;
-      padding: 14px 32px;
-      background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
-      color: white !important;
+      background: #0f766e;
+      color: #ffffff !important;
       text-decoration: none;
-      border-radius: 8px;
-      margin: 8px 6px;
-      font-weight: 600;
-      font-size: 15px;
-      box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
-      transition: all 0.3s ease;
-    }
-    .button:hover { 
-      background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
-      box-shadow: 0 6px 16px rgba(30, 64, 175, 0.4);
-      transform: translateY(-2px);
-    }
-    .button.primary { 
-      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
-    }
-    .button.primary:hover { 
-      background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
-      box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+      padding: 12px 26px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      box-shadow: 0 6px 16px rgba(15, 118, 110, 0.25);
     }
     .note {
       text-align: center;
-      color: #64748b;
-      font-size: 14px;
-      margin: 20px 0 0 0;
-      line-height: 1.6;
-    }
-    .footer { 
-      text-align: center;
-      padding: 30px;
-      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
-      color: #cbd5e1;
       font-size: 13px;
+      color: #64748b;
+      margin: 0 0 18px 0;
     }
-    .footer p {
-      margin: 8px 0;
-      line-height: 1.6;
+    .footer {
+      padding: 18px 24px 28px 24px;
+      background: #0f172a;
+      color: #cbd5e1;
+      text-align: center;
+      font-size: 12px;
     }
     .footer strong {
-      color: #fbbf24;
-      font-weight: 600;
-    }
-    .divider {
-      height: 2px;
-      background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%);
-      margin: 25px 0;
+      color: #f8fafc;
     }
     @media only screen and (max-width: 600px) {
-      body { padding: 10px; }
-      .header { padding: 30px 20px; }
-      .content { padding: 25px 20px; }
-      .button { display: block; margin: 10px 0; }
+      body { padding: 12px; }
+      .header, .content { padding: 22px; }
+      .cta a { display: block; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="card">
     <div class="header">
-      <h2>📨 New Reply Received!</h2>
-      <p>Campaign: <strong>${campaignName}</strong></p>
-      <p>Domain: <strong>${domainName}</strong></p>
+      <h1>New Reply Received</h1>
+      <div class="meta">Campaign: <strong>${campaignName}</strong></div>
+      <div class="meta">Domain: <strong>${domainName}</strong></div>
     </div>
-    
+
     <div class="content">
-      <div class="info-badge">
-        <span class="info-icon">⚠️</span>
-        <div>
-          <strong>Action Required</strong> - Auto-response is OFF. Please review and approve this reply before sending.
+      <div class="badge">Action required: auto-response is off. Review and send your reply.</div>
+
+      <div class="section">
+        <div class="section-title">Buyer Message</div>
+        <div class="section-meta">From: <strong>${buyerEmail}</strong></div>
+        <div class="message">
+          ${buyerMessage.replace(/
+/g, '<br>')}
         </div>
       </div>
-      
-      <div class="message-box">
-        <div class="label">
-          <span>👤</span>
-          <span>Buyer's Message</span>
-        </div>
-        <div style="color: #64748b; font-size: 14px; margin: 8px 0;">
-          From: <strong style="color: #1e40af;">${buyerEmail}</strong>
-        </div>
-        <div class="message-content">
-          ${buyerMessage.replace(/\n/g, '<br>')}
+
+      <div class="section">
+        <div class="section-title">AI Suggested Response</div>
+        <div class="message">
+          ${suggestedResponse.replace(/
+/g, '<br>')}
         </div>
       </div>
-      
-      <div class="divider"></div>
-      
-      <div class="ai-response">
-        <div class="label">
-          <span>🤖</span>
-          <span>AI-Generated Suggested Response</span>
-        </div>
-        <div class="response-content">
-          ${suggestedResponse.replace(/\n/g, '<br>')}
-        </div>
+
+      <div class="cta">
+        <a href="${dashboardUrl}/dashboard?draftId=${draftId}">Review & Edit Response</a>
       </div>
-      
-      <div class="button-container">
-        <a href="${dashboardUrl}/dashboard?draftId=${draftId}" class="button">
-          ✏️ Review & Edit Response
-        </a>
-        <a href="${dashboardUrl}/dashboard?draftId=${draftId}&action=send" class="button primary">
-          ✅ Send As-Is
-        </a>
-      </div>
-      
-      <p class="note">
-        💡 You can review, edit, and customize this response from your dashboard before sending.
-      </p>
+
+      <p class="note">You can edit the response before sending.</p>
     </div>
-    
+
     <div class="footer">
-      <p><strong>DomainSeller</strong> AI Agent</p>
-      <p>Intelligent Email Management • Powered by AI</p>
-      <p style="margin-top: 15px; opacity: 0.8;">You received this notification because auto-response is disabled for this campaign.</p>
+      <div><strong>DomainSeller</strong> AI Agent</div>
+      <div>Intelligent Email Management ? Powered by AI</div>
     </div>
   </div>
 </body>
