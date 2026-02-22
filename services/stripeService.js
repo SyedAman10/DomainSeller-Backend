@@ -183,6 +183,116 @@ const createPaymentLink = async (paymentData) => {
 };
 
 /**
+ * Create Stripe Checkout Session (platform) for campaign payments
+ * @param {Object} paymentData - Payment details
+ * @returns {Promise<Object>} Checkout session details
+ */
+const createCampaignCheckoutSession = async (paymentData) => {
+  const {
+    domainName,
+    amount,
+    currency = 'USD',
+    sellerStripeAccountId,
+    buyerEmail,
+    buyerName,
+    campaignId,
+    userId,
+    approvalId
+  } = paymentData;
+
+  console.log('💳 CREATING STRIPE CHECKOUT SESSION (CAMPAIGN)');
+  console.log(`   Domain: ${domainName}`);
+  console.log(`   Amount: $${amount} ${currency}`);
+  console.log(`   Seller Account: ${sellerStripeAccountId}`);
+  console.log(`   Buyer: ${buyerName} (${buyerEmail})`);
+
+  const amountInCents = Math.round(amount * 100);
+  const successUrl = `${process.env.FRONTEND_URL || 'https://3vltn.com'}/payment/success?session_id={CHECKOUT_SESSION_ID}`;
+  const cancelUrl = `${process.env.FRONTEND_URL || 'https://3vltn.com'}/payment/cancel`;
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer_email: buyerEmail,
+      line_items: [
+        {
+          price_data: {
+            currency: currency.toLowerCase(),
+            unit_amount: amountInCents,
+            product_data: {
+              name: domainName,
+              description: `Domain purchase: ${domainName}`
+            }
+          },
+          quantity: 1
+        }
+      ],
+      metadata: {
+        payment_type: 'campaign',
+        domain: domainName,
+        campaignId: campaignId,
+        userId: userId,
+        buyerEmail: buyerEmail,
+        buyerName: buyerName,
+        approvalId: approvalId || '',
+        sellerStripeAccountId: sellerStripeAccountId || ''
+      },
+      payment_intent_data: {
+        metadata: {
+          payment_type: 'campaign',
+          domain: domainName,
+          campaignId: campaignId,
+          userId: userId,
+          buyerEmail: buyerEmail,
+          buyerName: buyerName,
+          approvalId: approvalId || '',
+          sellerStripeAccountId: sellerStripeAccountId || ''
+        }
+      },
+      success_url: successUrl,
+      cancel_url: cancelUrl
+    });
+
+    console.log(`✅ Checkout session created: ${session.id}`);
+    console.log(`🔗 URL: ${session.url}`);
+
+    await query(
+      `INSERT INTO stripe_payments 
+        (payment_link_id, campaign_id, buyer_email, buyer_name, domain_name, amount, currency, status, payment_url, user_id, stripe_account_id, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, $10, $11)
+       RETURNING id`,
+      [
+        session.id,
+        campaignId,
+        buyerEmail,
+        buyerName,
+        domainName,
+        amount,
+        currency,
+        session.url,
+        userId,
+        sellerStripeAccountId,
+        JSON.stringify(session.metadata || {})
+      ]
+    );
+
+    console.log('✅ Checkout session stored in database');
+
+    return {
+      success: true,
+      paymentLinkId: session.id,
+      paymentUrl: session.url,
+      amount,
+      currency,
+      message: 'Stripe Checkout session created successfully'
+    };
+  } catch (error) {
+    console.error('❌ Error creating checkout session:', error.message);
+    throw error;
+  }
+};
+
+/**
  * Create direct payment link (legacy, non-escrow) - INTERNAL USE ONLY
  * @param {Object} paymentData - Payment details
  * @returns {Promise<Object>} Payment link details
@@ -532,6 +642,7 @@ module.exports = {
   refreshAccountLink,
   checkAccountStatus,
   createPaymentLink,
+  createCampaignCheckoutSession,
   getUserStripeConfig,
   enableStripeForUser,
   disconnectStripeAccount,
@@ -539,4 +650,3 @@ module.exports = {
   updatePaymentStatus,
   getCampaignPayments
 };
-

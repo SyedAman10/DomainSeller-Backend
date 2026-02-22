@@ -592,26 +592,69 @@ router.post('/webhook', async (req, res) => {
           updatedPayment = await updatePaymentStatus(session.payment_intent, 'completed');
         }
         
-        // If not found by payment_intent, try by payment_link
-        if (!updatedPayment && session.payment_link) {
-          console.log(`🔍 Trying to find payment by payment_link: ${session.payment_link}`);
-          const paymentByLink = await query(
-            `UPDATE stripe_payments 
-             SET status = 'completed', 
-                 payment_intent_id = $1,
-                 updated_at = NOW()
-             WHERE payment_link_id = $2
-             RETURNING *`,
-            [session.payment_intent, session.payment_link]
-          );
-          
-          if (paymentByLink.rows.length > 0) {
-            updatedPayment = paymentByLink.rows[0];
-            console.log(`✅ Found and updated payment by payment_link`);
+        // If not found by payment_intent, try by checkout session ID or payment_link
+        if (!updatedPayment) {
+          const fallbackId = session.id || session.payment_link;
+          if (fallbackId) {
+            console.log(`🔍 Trying to find payment by session/payment_link: ${fallbackId}`);
+            const paymentByLink = await query(
+              `UPDATE stripe_payments 
+               SET status = 'completed', 
+                   payment_intent_id = $1,
+                   updated_at = NOW()
+               WHERE payment_link_id = $2
+               RETURNING *`,
+              [session.payment_intent, fallbackId]
+            );
+            
+            if (paymentByLink.rows.length > 0) {
+              updatedPayment = paymentByLink.rows[0];
+              console.log(`✅ Found and updated payment by session/payment_link`);
+            }
           }
         }
         
         if (updatedPayment) {
+          const isCampaignCheckout = session.metadata?.payment_type === 'campaign';
+          // If this was a platform Checkout Session, transfer funds to connected account
+          if (isCampaignCheckout && updatedPayment.stripe_account_id && !updatedPayment.transfer_initiated && session.payment_intent) {
+            try {
+              const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
+              const chargeId = paymentIntent.latest_charge;
+              if (chargeId) {
+                const transferAmount = Math.round(parseFloat(updatedPayment.amount) * 100);
+                const transfer = await stripe.transfers.create({
+                  amount: transferAmount,
+                  currency: (updatedPayment.currency || 'USD').toLowerCase(),
+                  destination: updatedPayment.stripe_account_id,
+                  source_transaction: chargeId,
+                  metadata: {
+                    payment_type: 'campaign',
+                    payment_link_id: updatedPayment.payment_link_id,
+                    domain: updatedPayment.domain_name,
+                    campaignId: updatedPayment.campaign_id || '',
+                    userId: updatedPayment.user_id || ''
+                  }
+                });
+
+                await query(
+                  `UPDATE stripe_payments
+                   SET transfer_id = $1,
+                       transfer_initiated = true,
+                       transfer_completed_at = NOW(),
+                       updated_at = NOW()
+                   WHERE id = $2`,
+                  [transfer.id, updatedPayment.id]
+                );
+
+                console.log(`✅ Transfer created: ${transfer.id}`);
+              } else {
+                console.warn('⚠️  No charge found on payment intent; transfer skipped');
+              }
+            } catch (transferError) {
+              console.error('❌ Transfer failed:', transferError.message);
+            }
+          }
           
           // If we have payment info, notify the seller
           if (updatedPayment) {
@@ -983,7 +1026,7 @@ router.post('/approvals/:id/approve', async (req, res) => {
     }
 
     // Create payment link
-    const { createPaymentLink } = require('../services/stripeService');
+    const { createCampaignCheckoutSession } = require('../services/stripeService');
     const { sendEmail } = require('../services/emailService');
 
     console.log('📋 Approval request data:');
@@ -1005,7 +1048,7 @@ router.post('/approvals/:id/approve', async (req, res) => {
       }
     }
 
-    const paymentResult = await createPaymentLink({
+    const paymentResult = await createCampaignCheckoutSession({
       domainName: request.domain_name,
       amount: request.amount,
       currency: request.currency,
@@ -1014,7 +1057,7 @@ router.post('/approvals/:id/approve', async (req, res) => {
       buyerName: request.buyer_name,
       campaignId: campaignIdToUse,
       userId: request.user_id,
-      useEscrow: true  // EXPLICITLY enable escrow for approved payments
+      approvalId: id
     });
 
     if (paymentResult.success) {
@@ -1152,7 +1195,7 @@ router.get('/approvals/:id/approve', async (req, res) => {
     }
 
     // Create payment link
-    const { createPaymentLink } = require('../services/stripeService');
+    const { createCampaignCheckoutSession } = require('../services/stripeService');
     const { sendEmail } = require('../services/emailService');
 
     // Handle campaign_id - convert string to integer or null
@@ -1166,7 +1209,7 @@ router.get('/approvals/:id/approve', async (req, res) => {
       }
     }
 
-    const paymentResult = await createPaymentLink({
+    const paymentResult = await createCampaignCheckoutSession({
       domainName: request.domain_name,
       amount: request.amount,
       currency: request.currency,
@@ -1175,7 +1218,7 @@ router.get('/approvals/:id/approve', async (req, res) => {
       buyerName: request.buyer_name,
       campaignId: campaignIdToUse,
       userId: request.user_id,
-      useEscrow: true  // EXPLICITLY enable escrow for approved payments
+      approvalId: id
     });
 
     if (paymentResult.success) {
@@ -2031,10 +2074,10 @@ router.post('/counter-offer/accept', async (req, res) => {
     console.log(`✅ Seller Stripe account: ${userConfig.accountId}`);
 
     // Create payment link at negotiated price
-    const { createPaymentLink } = require('../services/stripeService');
+    const { createCampaignCheckoutSession } = require('../services/stripeService');
     const { sendEmail } = require('../services/emailService');
 
-    const paymentResult = await createPaymentLink({
+    const paymentResult = await createCampaignCheckoutSession({
       domainName: domainName,
       amount: parseFloat(negotiatedPrice),
       currency: 'USD',
@@ -2242,11 +2285,11 @@ router.get('/counter-offer/accept', async (req, res) => {
       `);
     }
 
-    // Create payment link
-    const { createPaymentLink } = require('../services/stripeService');
+    // Create checkout session
+    const { createCampaignCheckoutSession } = require('../services/stripeService');
     const { sendEmail } = require('../services/emailService');
 
-    const paymentResult = await createPaymentLink({
+    const paymentResult = await createCampaignCheckoutSession({
       domainName: domainName,
       amount: parseFloat(negotiatedPrice),
       currency: 'USD',
