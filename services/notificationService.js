@@ -223,7 +223,7 @@ async function notifyNewReply({
     </div>
 
     <div class="footer">
-      <div><strong>DomainSeller</strong> AI Agent</div>
+      <div><strong>3VLTN</strong> AI Agent</div>
       <div>Intelligent Email Management • Powered by AI</div>
     </div>
   </div>
@@ -639,7 +639,7 @@ async function notifyAutoResponse({
       </div>
 
       <div class="footer">
-        <div><strong>DomainSeller</strong> AI Agent</div>
+        <div><strong>3VLTN</strong> AI Agent</div>
         <div>Intelligent Email Management ? Powered by AI</div>
       </div>
     </div>
@@ -852,7 +852,7 @@ async function notifyManualSend({
     </div>
     
     <div class="footer">
-      <p><strong>DomainSeller</strong> AI Agent</p>
+      <p><strong>3VLTN</strong> AI Agent</p>
       <p>Intelligent Email Management • Powered by AI</p>
       <p style="margin-top: 15px; opacity: 0.8;">Manual reply confirmation</p>
     </div>
@@ -874,4 +874,5 @@ module.exports = {
   notifyAutoResponse,
   notifyManualSend
 };
+
 

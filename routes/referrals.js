@@ -260,9 +260,9 @@ router.get('/my-code/:userId', async (req, res) => {
       referralCode: user.referral_code,
       shareableLink: `${frontendUrl}/signup?ref=${user.referral_code}`,
       totalReferrals: user.total_referrals,
-      shareText: `Join me on DomainSeller! Use my referral code ${user.referral_code} to get started.`,
+      shareText: `Join me on 3VLTN! Use my referral code ${user.referral_code} to get started.`,
       socialLinks: {
-        twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`Join me on DomainSeller! Use code ${user.referral_code}`)}&url=${encodeURIComponent(`${frontendUrl}/signup?ref=${user.referral_code}`)}`,
+        twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`Join me on 3VLTN! Use code ${user.referral_code}`)}&url=${encodeURIComponent(`${frontendUrl}/signup?ref=${user.referral_code}`)}`,
         facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${frontendUrl}/signup?ref=${user.referral_code}`)}`,
         linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`${frontendUrl}/signup?ref=${user.referral_code}`)}`
       }
