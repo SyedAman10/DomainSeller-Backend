@@ -1352,6 +1352,27 @@ router.post('/approvals/:id/decline', async (req, res) => {
     }
     const { declinedBy, notes } = req.body;
 
+    const approval = await query(
+      'SELECT * FROM stripe_approvals WHERE id = $1',
+      [id]
+    );
+
+    if (approval.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Approval request not found'
+      });
+    }
+
+    const request = approval.rows[0];
+
+    if (request.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        error: `Request already ${request.status}`
+      });
+    }
+
     await query(
       `UPDATE stripe_approvals 
        SET status = 'declined',
@@ -1360,6 +1381,29 @@ router.post('/approvals/:id/decline', async (req, res) => {
        WHERE id = $2 AND status = 'pending'`,
       [notes || 'Declined by admin', id]
     );
+
+    try {
+      const { sendEmail } = require('../services/emailService');
+      const declineNote = notes ? `Reason: ${notes}\n\n` : '';
+      const emailContent =
+        `Hi ${request.buyer_name || 'there'},\n\n` +
+        `Thanks for your interest in ${request.domain_name}. ` +
+        `Unfortunately, we are not able to proceed with this request at this time.\n\n` +
+        declineNote +
+        `If you'd like to discuss alternative options, just reply to this email.\n\n` +
+        `Best regards,\n` +
+        `${request.seller_name || 'Domain Seller'}`;
+
+      await sendEmail({
+        to: request.buyer_email,
+        subject: `Update on ${request.domain_name}`,
+        html: emailContent.replace(/\n/g, '<br>'),
+        text: emailContent,
+        tags: [`campaign-${request.campaign_id}`, 'stripe-declined', 'buyer-notify']
+      });
+    } catch (notifyErr) {
+      console.error('Failed to notify buyer of decline:', notifyErr.message);
+    }
 
     res.json({
       success: true,
@@ -1420,6 +1464,29 @@ router.get('/approvals/:id/decline', async (req, res) => {
     }
 
     const request = result.rows[0];
+
+    try {
+      const { sendEmail } = require('../services/emailService');
+      const declineNote = reason ? `Reason: ${reason}\n\n` : '';
+      const emailContent =
+        `Hi ${request.buyer_name || 'there'},\n\n` +
+        `Thanks for your interest in ${request.domain_name}. ` +
+        `Unfortunately, we are not able to proceed with this request at this time.\n\n` +
+        declineNote +
+        `If you'd like to discuss alternative options, just reply to this email.\n\n` +
+        `Best regards,\n` +
+        `${request.seller_name || 'Domain Seller'}`;
+
+      await sendEmail({
+        to: request.buyer_email,
+        subject: `Update on ${request.domain_name}`,
+        html: emailContent.replace(/\n/g, '<br>'),
+        text: emailContent,
+        tags: [`campaign-${request.campaign_id}`, 'stripe-declined', 'buyer-notify']
+      });
+    } catch (notifyErr) {
+      console.error('Failed to notify buyer of decline (GET):', notifyErr.message);
+    }
 
     res.send(`
       <html>
