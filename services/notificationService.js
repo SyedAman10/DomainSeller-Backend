@@ -204,16 +204,14 @@ async function notifyNewReply({
         <div class="section-title">Buyer Message</div>
         <div class="section-meta">From: <strong>${buyerEmail}</strong></div>
         <div class="message">
-          ${buyerMessage.replace(/
-/g, '<br>')}
+          ${buyerMessage.replace(/\n/g, '<br>')}
         </div>
       </div>
 
       <div class="section">
         <div class="section-title">AI Suggested Response</div>
         <div class="message">
-          ${suggestedResponse.replace(/
-/g, '<br>')}
+          ${suggestedResponse.replace(/\n/g, '<br>')}
         </div>
       </div>
 
@@ -226,7 +224,7 @@ async function notifyNewReply({
 
     <div class="footer">
       <div><strong>DomainSeller</strong> AI Agent</div>
-      <div>Intelligent Email Management ? Powered by AI</div>
+      <div>Intelligent Email Management • Powered by AI</div>
     </div>
   </div>
 </body>
