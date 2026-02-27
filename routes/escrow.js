@@ -707,7 +707,7 @@ router.get('/approvals/:id/decline', async (req, res) => {
               <p style="margin:8px 0;color:#334155;"><strong>Domain:</strong> ${request.domain_name}</p>
               <p style="margin:8px 0;color:#334155;"><strong>Buyer:</strong> ${request.buyer_name} (${request.buyer_email})</p>
               <p style="margin:8px 0;color:#334155;"><strong>Amount:</strong> $${request.amount} ${request.currency}</p>
-              ${reason `<p style="margin:8px 0;color:#334155;"><strong>Reason:</strong> ${reason}</p>` : ''}
+              ${reason ? `<p style="margin:8px 0;color:#334155;"><strong>Reason:</strong> ${reason}</p>` : ''}
             </div>
             <p style="color:#64748b;font-size:14px;">
               No notification was sent to the buyer.<br>
