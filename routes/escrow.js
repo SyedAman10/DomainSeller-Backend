@@ -497,7 +497,7 @@ router.get('/approvals/:id/approve', async (req, res) => {
                 <p style="margin:8px 0;color:#334155;"><strong>Amount:</strong> $${request.amount} ${request.currency}</p>
                 <p style="margin:8px 0;color:#334155;"><strong>Buyer:</strong> ${request.buyer_name}</p>
                 ${escrowResult.transactionId 
-                  `<p style="margin:8px 0;color:#334155;"><strong>Transaction ID:</strong> ${escrowResult.transactionId}</p>` : ''}
+                  ? `<p style="margin:8px 0;color:#334155;"><strong>Transaction ID:</strong> ${escrowResult.transactionId}</p>` : ''}
                 <p style="margin:8px 0;color:#334155;"><strong>Payment Link:</strong> <a href="${escrowResult.escrowUrl}" target="_blank">${escrowResult.escrowUrl}</a></p>
               </div>
               <p style="color:#64748b;font-size:14px;">
