@@ -616,43 +616,73 @@ router.post('/webhook', async (req, res) => {
         
         if (updatedPayment) {
           const isCampaignCheckout = session.metadata?.payment_type === 'campaign';
-          // If this was a platform Checkout Session, transfer funds to connected account
-          if (isCampaignCheckout && updatedPayment.stripe_account_id && !updatedPayment.transfer_initiated && session.payment_intent) {
-            try {
-              const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
-              const chargeId = paymentIntent.latest_charge;
-              if (chargeId) {
-                const transferAmount = Math.round(parseFloat(updatedPayment.amount) * 100);
-                const transfer = await stripe.transfers.create({
-                  amount: transferAmount,
-                  currency: (updatedPayment.currency || 'USD').toLowerCase(),
-                  destination: updatedPayment.stripe_account_id,
-                  source_transaction: chargeId,
-                  metadata: {
-                    payment_type: 'campaign',
-                    payment_link_id: updatedPayment.payment_link_id,
-                    domain: updatedPayment.domain_name,
-                    campaignId: updatedPayment.campaign_id || '',
-                    userId: updatedPayment.user_id || ''
-                  }
-                });
 
-                await query(
-                  `UPDATE stripe_payments
-                   SET transfer_id = $1,
-                       transfer_initiated = true,
-                       transfer_completed_at = NOW(),
-                       updated_at = NOW()
-                   WHERE id = $2`,
-                  [transfer.id, updatedPayment.id]
-                );
+          // For campaign payments, hold funds until buyer confirms + admin verifies
+          let transaction = null;
+          if (isCampaignCheckout) {
+            const platformFeePercent = 0.10;
+            const amount = parseFloat(updatedPayment.amount);
+            const platformFeeAmount = Math.round(amount * platformFeePercent * 100) / 100;
+            const sellerPayoutAmount = Math.round((amount - platformFeeAmount) * 100) / 100;
 
-                console.log(`✅ Transfer created: ${transfer.id}`);
-              } else {
-                console.warn('⚠️  No charge found on payment intent; transfer skipped');
-              }
-            } catch (transferError) {
-              console.error('❌ Transfer failed:', transferError.message);
+            const existingTx = await query(
+              `SELECT * FROM transactions 
+               WHERE stripe_payment_intent_id = $1 OR stripe_payment_link_id = $2
+               ORDER BY created_at DESC
+               LIMIT 1`,
+              [session.payment_intent || null, updatedPayment.payment_link_id]
+            );
+
+            if (existingTx.rows.length > 0) {
+              transaction = existingTx.rows[0];
+            } else {
+              const insertTx = await query(
+                `INSERT INTO transactions 
+                  (
+                    campaign_id,
+                    buyer_email,
+                    buyer_name,
+                    domain_name,
+                    amount,
+                    currency,
+                    payment_status,
+                    verification_status,
+                    platform_fee_amount,
+                    seller_payout_amount,
+                    stripe_payment_link_id,
+                    stripe_payment_intent_id,
+                    seller_stripe_id,
+                    user_id,
+                    paid_at,
+                    created_at,
+                    updated_at
+                  )
+                 VALUES ($1, $2, $3, $4, $5, $6, 'paid', 'payment_received', $7, $8, $9, $10, $11, $12, NOW(), NOW(), NOW())
+                 RETURNING *`,
+                [
+                  updatedPayment.campaign_id,
+                  updatedPayment.buyer_email,
+                  updatedPayment.buyer_name,
+                  updatedPayment.domain_name,
+                  updatedPayment.amount,
+                  updatedPayment.currency || 'USD',
+                  platformFeeAmount,
+                  sellerPayoutAmount,
+                  updatedPayment.payment_link_id,
+                  session.payment_intent || null,
+                  updatedPayment.stripe_account_id,
+                  updatedPayment.user_id
+                ]
+              );
+
+              transaction = insertTx.rows[0];
+
+              await query(
+                `INSERT INTO verification_history 
+                  (transaction_id, action, previous_status, new_status, notes, created_at)
+                 VALUES ($1, 'payment_received', NULL, 'payment_received', 'Campaign payment received, awaiting buyer confirmation', NOW())`,
+                [transaction.id]
+              );
             }
           }
           
@@ -673,6 +703,9 @@ router.post('/webhook', async (req, res) => {
               // Calculate amount in proper currency format
               const amount = updatedPayment.amount;
               const currency = updatedPayment.currency || 'USD';
+              const platformFeePercent = 0.10;
+              const platformFeeAmount = Math.round(parseFloat(amount) * platformFeePercent * 100) / 100;
+              const sellerPayoutAmount = Math.round((parseFloat(amount) - platformFeeAmount) * 100) / 100;
               
               console.log(`📧 Notifying seller ${seller.email} about payment...`);
               
@@ -681,7 +714,7 @@ router.post('/webhook', async (req, res) => {
                 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
                   <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
                     <div style="font-size:60px;margin-bottom:10px;">💰</div>
-                    <h1 style="color:white;margin:0;font-size:28px;">Payment Received!</h1>
+                    <h1 style="color:white;margin:0;font-size:28px;">Payment Received (On Hold)</h1>
                   </div>
                   
                   <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
@@ -690,7 +723,7 @@ router.post('/webhook', async (req, res) => {
                     </p>
                     
                     <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
-                      Great news! You've received a payment for your domain.
+                      Great news! Payment for your domain has been received and is being held securely until the buyer confirms the transfer.
                     </p>
                     
                     <div style="background:white;border:2px solid #10b981;border-radius:12px;padding:25px;margin:25px 0;">
@@ -705,6 +738,14 @@ router.post('/webhook', async (req, res) => {
                           <td style="padding:10px 0;color:#10b981;font-weight:700;font-size:20px;text-align:right;">$${amount} ${currency}</td>
                         </tr>
                         <tr>
+                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Platform Fee (10%):</td>
+                          <td style="padding:10px 0;color:#ef4444;text-align:right;">-$${platformFeeAmount.toFixed(2)}</td>
+                        </tr>
+                        <tr style="border-top:2px solid #e5e7eb;">
+                          <td style="padding:15px 0 10px 0;color:#059669;font-weight:700;font-size:16px;">Your Payout:</td>
+                          <td style="padding:15px 0 10px 0;color:#10b981;font-weight:700;font-size:20px;text-align:right;">$${sellerPayoutAmount.toFixed(2)}</td>
+                        </tr>
+                        <tr>
                           <td style="padding:10px 0;color:#64748b;font-size:14px;">Buyer:</td>
                           <td style="padding:10px 0;color:#0f172a;font-weight:600;text-align:right;">${updatedPayment.buyer_name}</td>
                         </tr>
@@ -714,7 +755,7 @@ router.post('/webhook', async (req, res) => {
                         </tr>
                         <tr>
                           <td style="padding:10px 0;color:#64748b;font-size:14px;">Status:</td>
-                          <td style="padding:10px 0;text-align:right;"><span style="background:#10b981;color:white;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;">PAID ✓</span></td>
+                          <td style="padding:10px 0;text-align:right;"><span style="background:#f59e0b;color:white;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;">ON HOLD</span></td>
                         </tr>
                       </table>
                     </div>
@@ -725,13 +766,14 @@ router.post('/webhook', async (req, res) => {
                         <li>Contact the buyer to initiate domain transfer</li>
                         <li>Use your domain registrar to transfer the domain</li>
                         <li>Confirm transfer completion with the buyer</li>
+                        <li>Buyer confirms receipt via email</li>
+                        <li>Admin verifies and releases payout</li>
                       </ol>
                     </div>
                     
                     <div style="background:#eff6ff;border-radius:12px;padding:20px;margin:25px 0;">
                       <p style="margin:0;color:#1e40af;font-size:14px;">
-                        💡 <strong>Tip:</strong> The payment has been deposited directly to your connected Stripe account. 
-                        Payouts to your bank will follow your Stripe payout schedule.
+                        💡 <strong>Tip:</strong> Funds are held securely until the buyer confirms the domain transfer and our admin team verifies it.
                       </p>
                     </div>
                     
@@ -744,73 +786,91 @@ router.post('/webhook', async (req, res) => {
               
               await sendEmail({
                 to: seller.email,
-                subject: `💰 Payment Received: $${amount} for ${updatedPayment.domain_name}`,
+                subject: `💰 Payment Received (On Hold): $${amount} for ${updatedPayment.domain_name}`,
                 html: sellerEmailHtml,
-                text: `Payment Received!\n\nHi ${sellerName},\n\nYou've received a payment of $${amount} ${currency} for ${updatedPayment.domain_name}.\n\nBuyer: ${updatedPayment.buyer_name} (${updatedPayment.buyer_email})\n\nNext steps:\n1. Contact the buyer to initiate domain transfer\n2. Use your domain registrar to transfer the domain\n3. Confirm transfer completion with the buyer\n\nThe payment has been deposited to your Stripe account.`,
+                text: `Payment Received (On Hold)\n\nHi ${sellerName},\n\nPayment of $${amount} ${currency} for ${updatedPayment.domain_name} has been received and is being held securely.\n\nPlatform Fee (10%): -$${platformFeeAmount.toFixed(2)}\nYour Payout: $${sellerPayoutAmount.toFixed(2)}\n\nBuyer: ${updatedPayment.buyer_name} (${updatedPayment.buyer_email})\n\nNext steps:\n1. Contact the buyer to initiate domain transfer\n2. Use your domain registrar to transfer the domain\n3. Confirm transfer completion with the buyer\n4. Buyer confirms receipt via email\n5. Admin verifies and releases payout\n\nFunds are held until confirmation + verification.`,
                 tags: ['payment-received', 'seller-notification', `campaign-${updatedPayment.campaign_id}`]
               });
               
               console.log(`✅ Seller notification sent to ${seller.email}`);
               
-              // Also send buyer confirmation
-              const buyerEmailHtml = `
-                <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
-                  <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
-                    <div style="font-size:60px;margin-bottom:10px;">✅</div>
-                    <h1 style="color:white;margin:0;font-size:28px;">Payment Confirmed!</h1>
-                  </div>
-                  
-                  <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
-                    <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
-                      Hi <strong>${updatedPayment.buyer_name}</strong>,
-                    </p>
-                    
-                    <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
-                      Thank you for your purchase! Your payment has been successfully processed.
-                    </p>
-                    
-                    <div style="background:white;border:2px solid #10b981;border-radius:12px;padding:25px;margin:25px 0;">
-                      <h3 style="margin:0 0 20px 0;color:#059669;font-size:18px;">📋 Order Summary</h3>
-                      <table style="width:100%;border-collapse:collapse;">
-                        <tr>
-                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Domain Purchased:</td>
-                          <td style="padding:10px 0;color:#0f172a;font-weight:600;text-align:right;">${updatedPayment.domain_name}</td>
-                        </tr>
-                        <tr>
-                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Amount Paid:</td>
-                          <td style="padding:10px 0;color:#10b981;font-weight:700;font-size:20px;text-align:right;">$${amount} ${currency}</td>
-                        </tr>
-                        <tr>
-                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Status:</td>
-                          <td style="padding:10px 0;text-align:right;"><span style="background:#10b981;color:white;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;">PAID ✓</span></td>
-                        </tr>
-                      </table>
+              // Send buyer email with confirmation button (campaign payments)
+              if (isCampaignCheckout) {
+                const { generateBuyerConfirmationLink } = require('../routes/buyer');
+                const confirmationLink = transaction
+                  ? generateBuyerConfirmationLink(transaction.id, updatedPayment.buyer_email, updatedPayment.domain_name)
+                  : null;
+
+                const buyerEmailHtml = `
+                  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
+                    <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
+                      <div style="font-size:60px;margin-bottom:10px;">?</div>
+                      <h1 style="color:white;margin:0;font-size:28px;">Payment Received!</h1>
                     </div>
                     
-                    <div style="background:#dbeafe;border-radius:12px;padding:20px;margin:25px 0;">
-                      <h4 style="margin:0 0 10px 0;color:#1e40af;font-size:16px;">📧 What Happens Next?</h4>
-                      <p style="color:#1e3a8a;margin:0;line-height:1.6;">
-                        The seller has been notified of your payment and will contact you shortly 
-                        to complete the domain transfer. Please check your email for further instructions.
+                    <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
+                      <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
+                        Hi <strong>${updatedPayment.buyer_name}</strong>,
+                      </p>
+                      
+                      <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
+                        Thank you for your purchase of <strong>${updatedPayment.domain_name}</strong>! 
+                        Your payment of <strong>$${amount} ${currency}</strong> has been received and is being held securely.
+                      </p>
+                      
+                      <div style="background:white;border:2px solid #3b82f6;border-radius:12px;padding:25px;margin:25px 0;">
+                        <h3 style="margin:0 0 15px 0;color:#1e40af;">?? Secure Transfer Process</h3>
+                        <p style="color:#334155;line-height:1.6;margin:0;">
+                          The seller will initiate the domain transfer. Once you receive the domain, please confirm below so we can release the funds.
+                        </p>
+                      </div>
+                      
+                      <div style="text-align:center;margin:30px 0;">
+                        <a href="${confirmationLink || '#'}" 
+                           style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);">
+                          ? CONFIRM DOMAIN RECEIVED
+                        </a>
+                        <p style="color:#64748b;font-size:12px;margin-top:10px;">
+                          (Click this only after you've successfully received the domain)
+                        </p>
+                      </div>
+                      
+                      <div style="background:#dbeafe;border-radius:12px;padding:20px;margin:25px 0;">
+                        <h4 style="margin:0 0 10px 0;color:#1e40af;">?? What Happens Next?</h4>
+                        <ol style="color:#1e3a8a;margin:0;padding-left:20px;line-height:1.8;">
+                          <li>The seller will initiate the domain transfer</li>
+                          <li>You'll receive the transfer authorization</li>
+                          <li>Confirm receipt using the button above</li>
+                          <li>Funds are released after admin verification</li>
+                        </ol>
+                      </div>
+                      
+                      <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
+                        Questions? Reply to this email or contact support@3vltn.com
                       </p>
                     </div>
-                    
-                    <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
-                      Thank you for your purchase!
-                    </p>
                   </div>
-                </div>
-              `;
-              
-              await sendEmail({
-                to: updatedPayment.buyer_email,
-                subject: `✅ Payment Confirmed: ${updatedPayment.domain_name}`,
-                html: buyerEmailHtml,
-                text: `Payment Confirmed!\n\nHi ${updatedPayment.buyer_name},\n\nThank you for your purchase of ${updatedPayment.domain_name} for $${amount} ${currency}.\n\nThe seller has been notified and will contact you shortly to complete the domain transfer.\n\nPlease check your email for further instructions.`,
-                tags: ['payment-confirmed', 'buyer-notification', `campaign-${updatedPayment.campaign_id}`]
-              });
-              
-              console.log(`✅ Buyer confirmation sent to ${updatedPayment.buyer_email}`);
+                `;
+                
+                await sendEmail({
+                  to: updatedPayment.buyer_email,
+                  subject: `? Payment Received: ${updatedPayment.domain_name}`,
+                  html: buyerEmailHtml,
+                  text: `Payment Received!
+
+Hi ${updatedPayment.buyer_name},
+
+Your payment of $${amount} ${currency} for ${updatedPayment.domain_name} has been received and is being held securely.
+
+The seller will initiate the domain transfer. Once you receive the domain, please confirm here:
+${confirmationLink}
+
+Thank you!`,
+                  tags: ['payment-received', 'buyer-notification', `campaign-${updatedPayment.campaign_id}`]
+                });
+                
+                console.log(`? Buyer confirmation email sent to ${updatedPayment.buyer_email}`);
+              }
               
               // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               // INSTANT ACTIONS AFTER PAYMENT

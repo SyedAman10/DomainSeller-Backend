@@ -30,8 +30,8 @@ const createEscrowPayment = async ({
     
     const amountInCents = Math.round(amount * 100);
     
-    // Calculate platform fee (5%)
-    const platformFeePercent = 0.05;
+    // Calculate platform fee (10%)
+    const platformFeePercent = 0.10;
     const platformFeeAmount = amount * platformFeePercent;
     const sellerPayoutAmount = amount - platformFeeAmount;
 
