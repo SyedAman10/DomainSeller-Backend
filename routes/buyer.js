@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
-const { buyerConfirmReceived } = require('../services/escrowService');
+const { buyerConfirmReceived, verifyAndTransfer } = require('../services/escrowService');
 
 /**
  * GET /api/buyer/confirm/:transactionId/:token
@@ -94,6 +94,23 @@ router.get('/confirm/:transactionId/:token', async (req, res) => {
     // Record buyer confirmation
     await buyerConfirmReceived(transactionId);
 
+    // Auto-release funds after buyer confirmation (no admin step)
+    const autoAdminUserIdRaw = process.env.AUTO_VERIFY_ADMIN_USER_ID;
+    const autoAdminUserId = autoAdminUserIdRaw ? parseInt(autoAdminUserIdRaw, 10) : null;
+    const autoAdminIdToUse = Number.isFinite(autoAdminUserId) ? autoAdminUserId : null;
+
+    try {
+      await verifyAndTransfer(
+        transactionId,
+        autoAdminIdToUse,
+        true,
+        'Auto verified by buyer confirmation'
+      );
+    } catch (transferError) {
+      console.error('❌ Auto-transfer after buyer confirmation failed:', transferError.message);
+      // Continue to show confirmation page; transaction may be marked for manual action
+    }
+
     // Send notifications
     const { sendEmail } = require('../services/emailService');
 
@@ -134,8 +151,7 @@ router.get('/confirm/:transactionId/:token', async (req, res) => {
             <div style="background:#dbeafe;border-radius:12px;padding:20px;margin:25px 0;">
               <h4 style="margin:0 0 10px 0;color:#1e40af;">⏳ What's Next?</h4>
               <p style="color:#1e3a8a;margin:0;line-height:1.6;">
-                Our admin team will perform a final verification to ensure the domain transfer was successful. 
-                Once verified, the funds will be released to your Stripe account.
+                The buyer has confirmed receipt. We will now release the funds to your Stripe account automatically.
               </p>
             </div>
             
@@ -150,7 +166,7 @@ router.get('/confirm/:transactionId/:token', async (req, res) => {
         to: seller.email,
         subject: `📬 Buyer Confirmed: ${transaction.domain_name}`,
         html: sellerEmailHtml,
-        text: `Buyer Confirmed Receipt!\n\nHi ${sellerName},\n\n${transaction.buyer_name} has confirmed receipt of ${transaction.domain_name}.\n\nOur admin team will perform a final verification, and then the funds ($${transaction.seller_payout_amount}) will be released to your Stripe account.\n\nYou'll receive another email once complete.`,
+        text: `Buyer Confirmed Receipt!\n\nHi ${sellerName},\n\n${transaction.buyer_name} has confirmed receipt of ${transaction.domain_name}.\n\nFunds will now be released automatically to your Stripe account.\n\nYou'll receive another email once complete.`,
         tags: ['buyer-confirmed', 'seller-notification', `transaction-${transactionId}`]
       });
     }
@@ -178,8 +194,7 @@ router.get('/confirm/:transactionId/:token', async (req, res) => {
             <div style="background:#f0fdf4;padding:25px;border-radius:12px;margin:25px 0;border:2px solid #10b981;">
               <h3 style="margin:0 0 15px 0;color:#059669;">✅ What Happens Next?</h3>
               <ol style="color:#166534;margin:0;padding-left:20px;line-height:1.8;">
-                <li>Our admin team will perform a final verification</li>
-                <li>Once verified, the seller will receive payment</li>
+                <li>We release the funds to the seller automatically</li>
                 <li>You'll receive a final confirmation email</li>
               </ol>
             </div>
