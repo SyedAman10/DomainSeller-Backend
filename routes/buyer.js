@@ -126,36 +126,34 @@ router.get('/confirm/:transactionId/:token', async (req, res) => {
 
       const sellerEmailHtml = `
         <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <div style="background:linear-gradient(135deg,#3b82f6 0%,#2563eb 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
-            <div style="font-size:60px;margin-bottom:10px;">📬</div>
-            <h1 style="color:white;margin:0;font-size:28px;">Buyer Confirmed Receipt</h1>
+          <div style="background:#111827;padding:30px;text-align:center;border-radius:16px 16px 0 0;">
+            <h1 style="color:#f9fafb;margin:0;font-size:28px;">Buyer Confirmed Receipt</h1>
           </div>
           
-          <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
-            <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
+          <div style="padding:40px;background:#0b0f14;color:#e5e7eb;border-radius:0 0 16px 16px;">
+            <p style="font-size:18px;color:#e5e7eb;margin:0 0 25px 0;">
               Hi <strong>${sellerName}</strong>,
             </p>
             
-            <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
-              Great news! <strong>${transaction.buyer_name}</strong> has confirmed receipt of 
-              <strong>${transaction.domain_name}</strong>.
+            <p style="font-size:16px;color:#e5e7eb;line-height:1.6;margin:0 0 25px 0;">
+              ${transaction.buyer_name} has confirmed receipt of <strong>${transaction.domain_name}</strong>.
             </p>
             
-            <div style="background:white;border:2px solid #3b82f6;border-radius:12px;padding:25px;margin:25px 0;">
-              <h3 style="margin:0 0 15px 0;color:#1e40af;">📋 Transaction Details</h3>
-              <p style="margin:8px 0;color:#334155;"><strong>Domain:</strong> ${transaction.domain_name}</p>
-              <p style="margin:8px 0;color:#334155;"><strong>Sale Amount:</strong> $${transaction.amount}</p>
-              <p style="margin:8px 0;color:#334155;"><strong>Your Payout:</strong> $${transaction.seller_payout_amount}</p>
+            <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:25px;margin:25px 0;">
+              <h3 style="margin:0 0 15px 0;color:#e5e7eb;">Transaction Details</h3>
+              <p style="margin:8px 0;color:#e5e7eb;"><strong>Domain:</strong> ${transaction.domain_name}</p>
+              <p style="margin:8px 0;color:#e5e7eb;"><strong>Sale Amount:</strong> $${transaction.amount}</p>
+              <p style="margin:8px 0;color:#e5e7eb;"><strong>Your Payout:</strong> $${transaction.seller_payout_amount}</p>
             </div>
             
-            <div style="background:#dbeafe;border-radius:12px;padding:20px;margin:25px 0;">
-              <h4 style="margin:0 0 10px 0;color:#1e40af;">⏳ What's Next?</h4>
-              <p style="color:#1e3a8a;margin:0;line-height:1.6;">
+            <div style="background:#0f172a;border-radius:12px;padding:20px;margin:25px 0;border:1px solid #1f2937;">
+              <h4 style="margin:0 0 10px 0;color:#e5e7eb;">What Happens Next?</h4>
+              <p style="color:#e5e7eb;margin:0;line-height:1.6;">
                 The buyer has confirmed receipt. We will now release the funds to your Stripe account automatically.
               </p>
             </div>
             
-            <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
+            <p style="color:#94a3b8;font-size:14px;text-align:center;margin:30px 0 0 0;">
               You'll receive another email once the funds are transferred.
             </p>
           </div>
@@ -164,7 +162,7 @@ router.get('/confirm/:transactionId/:token', async (req, res) => {
 
       await sendEmail({
         to: seller.email,
-        subject: `📬 Buyer Confirmed: ${transaction.domain_name}`,
+        subject: `Buyer Confirmed: ${transaction.domain_name}`,
         html: sellerEmailHtml,
         text: `Buyer Confirmed Receipt!\n\nHi ${sellerName},\n\n${transaction.buyer_name} has confirmed receipt of ${transaction.domain_name}.\n\nFunds will now be released automatically to your Stripe account.\n\nYou'll receive another email once complete.`,
         tags: ['buyer-confirmed', 'seller-notification', `transaction-${transactionId}`]

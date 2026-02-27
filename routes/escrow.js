@@ -404,9 +404,9 @@ router.get('/approvals/:id/approve', async (req, res) => {
         <html>
           <head><title>Already Processed</title></head>
           <body style="font-family:Arial;padding:50px;text-align:center;">
-            <h1>ℹ️ Already ${request.status === 'approved' ? 'Approved' : 'Declined'}</h1>
+            <h1>ℹ️ Already ${request.status === 'approved' 'Approved' : 'Declined'}</h1>
             <p>This request was already ${request.status} on ${new Date(request.updated_at).toLocaleString()}</p>
-            ${request.status === 'approved' && request.escrow_transaction_id ? 
+            ${request.status === 'approved' && request.escrow_transaction_id 
               `<p><strong>Transaction ID:</strong> ${request.escrow_transaction_id}</p>` : ''}
           </body>
         </html>
@@ -451,7 +451,7 @@ router.get('/approvals/:id/approve', async (req, res) => {
         `Domain: ${request.domain_name}\n` +
         `Price: $${request.amount} ${request.currency}\n` +
         `Fees: Paid by ${request.fee_payer}\n\n` +
-        `🔗 Escrow.com Link: ${escrowResult.escrowUrl}\n\n` +
+        `🔗 Escrow.com link: ${escrowResult.escrowUrl}\n\n` +
         `I'll create the transaction on Escrow.com and you'll receive payment instructions within 24 hours.\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
         :
@@ -496,7 +496,7 @@ router.get('/approvals/:id/approve', async (req, res) => {
                 <p style="margin:8px 0;color:#334155;"><strong>Domain:</strong> ${request.domain_name}</p>
                 <p style="margin:8px 0;color:#334155;"><strong>Amount:</strong> $${request.amount} ${request.currency}</p>
                 <p style="margin:8px 0;color:#334155;"><strong>Buyer:</strong> ${request.buyer_name}</p>
-                ${escrowResult.transactionId ? 
+                ${escrowResult.transactionId 
                   `<p style="margin:8px 0;color:#334155;"><strong>Transaction ID:</strong> ${escrowResult.transactionId}</p>` : ''}
                 <p style="margin:8px 0;color:#334155;"><strong>Payment Link:</strong> <a href="${escrowResult.escrowUrl}" target="_blank">${escrowResult.escrowUrl}</a></p>
               </div>
@@ -607,7 +607,7 @@ router.post('/approvals/:id/approve', async (req, res) => {
         `Domain: ${request.domain_name}\n` +
         `Price: $${request.amount} ${request.currency}\n` +
         `Fees: Paid by ${request.fee_payer}\n\n` +
-        `🔗 **Escrow.com Link:** ${escrowResult.escrowUrl}\n\n` +
+        `🔗 **Escrow.com link:** ${escrowResult.escrowUrl}\n\n` +
         `I'll create the transaction on Escrow.com and you'll receive payment instructions within 24 hours.\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
         :
@@ -707,7 +707,7 @@ router.get('/approvals/:id/decline', async (req, res) => {
               <p style="margin:8px 0;color:#334155;"><strong>Domain:</strong> ${request.domain_name}</p>
               <p style="margin:8px 0;color:#334155;"><strong>Buyer:</strong> ${request.buyer_name} (${request.buyer_email})</p>
               <p style="margin:8px 0;color:#334155;"><strong>Amount:</strong> $${request.amount} ${request.currency}</p>
-              ${reason ? `<p style="margin:8px 0;color:#334155;"><strong>Reason:</strong> ${reason}</p>` : ''}
+              ${reason `<p style="margin:8px 0;color:#334155;"><strong>Reason:</strong> ${reason}</p>` : ''}
             </div>
             <p style="color:#64748b;font-size:14px;">
               No notification was sent to the buyer.<br>

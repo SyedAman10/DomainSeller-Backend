@@ -141,56 +141,33 @@ router.post('/verifications/:transactionId/verify', async (req, res) => {
       // ✅ DOMAIN VERIFIED - Notify seller about funds transfer
       const sellerEmailHtml = `
         <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
-            <div style="font-size:60px;margin-bottom:10px;">💸</div>
-            <h1 style="color:white;margin:0;font-size:28px;">Funds Transferred!</h1>
+          <div style="background:#111827;padding:30px;text-align:center;border-radius:16px 16px 0 0;">
+            <h1 style="color:#f9fafb;margin:0;font-size:28px;">Transfer Failed - Buyer Refunded</h1>
           </div>
           
-          <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
-            <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
+          <div style="padding:40px;background:#0b0f14;color:#e5e7eb;border-radius:0 0 16px 16px;">
+            <p style="font-size:18px;color:#e5e7eb;margin:0 0 25px 0;">
               Hi <strong>${sellerName}</strong>,
             </p>
             
-            <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
-              Great news! The domain transfer for <strong>${transaction.domain_name}</strong> has been verified, 
-              and your payment has been released to your Stripe account.
+            <p style="font-size:16px;color:#e5e7eb;line-height:1.6;margin:0 0 25px 0;">
+              The domain transfer for <strong>${transaction.domain_name}</strong> could not be completed. The buyer has been issued a full refund.
             </p>
             
-            <div style="background:white;border:2px solid #10b981;border-radius:12px;padding:25px;margin:25px 0;">
-              <h3 style="margin:0 0 20px 0;color:#059669;font-size:18px;">💳 Transfer Details</h3>
-              <table style="width:100%;border-collapse:collapse;">
-                <tr>
-                  <td style="padding:10px 0;color:#64748b;font-size:14px;">Domain:</td>
-                  <td style="padding:10px 0;color:#0f172a;font-weight:600;text-align:right;">${transaction.domain_name}</td>
-                </tr>
-                <tr>
-                  <td style="padding:10px 0;color:#64748b;font-size:14px;">Total Sale:</td>
-                  <td style="padding:10px 0;color:#334155;text-align:right;">$${transaction.amount}</td>
-                </tr>
-                <tr>
-                  <td style="padding:10px 0;color:#64748b;font-size:14px;">Platform Fee (10%):</td>
-                  <td style="padding:10px 0;color:#ef4444;text-align:right;">-$${transaction.platform_fee_amount}</td>
-                </tr>
-                <tr style="border-top:2px solid #e5e7eb;">
-                  <td style="padding:15px 0 10px 0;color:#059669;font-weight:700;font-size:16px;">Your Payout:</td>
-                  <td style="padding:15px 0 10px 0;color:#10b981;font-weight:700;font-size:20px;text-align:right;">$${transaction.seller_payout_amount}</td>
-                </tr>
-                <tr>
-                  <td style="padding:10px 0;color:#64748b;font-size:14px;">Transfer ID:</td>
-                  <td style="padding:10px 0;color:#64748b;font-size:12px;text-align:right;">${result.transferId}</td>
-                </tr>
-              </table>
+            <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:25px;margin:25px 0;">
+              <h3 style="margin:0 0 15px 0;color:#e5e7eb;">Details</h3>
+              <p style="margin:5px 0;color:#e5e7eb;"><strong>Domain:</strong> ${transaction.domain_name}</p>
+              <p style="margin:5px 0;color:#e5e7eb;"><strong>Refund Amount:</strong> $${transaction.amount} ${transaction.currency}</p>
             </div>
             
-            <div style="background:#eff6ff;border-radius:12px;padding:20px;margin:25px 0;">
-              <p style="margin:0;color:#1e40af;font-size:14px;">
-                💡 <strong>Funds will appear in your Stripe balance within 1-2 business days.</strong> 
-                You can check your Stripe dashboard for payout details.
-              </p>
+            ${notes ? `
+            <div style="background:#111827;border-radius:12px;padding:20px;margin:25px 0;border:1px solid #1f2937;">
+              <p style="margin:0;color:#e5e7eb;"><strong>Note:</strong> ${notes}</p>
             </div>
+            ` : ''}
             
-            <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
-              Thank you for using our platform!
+            <p style="color:#94a3b8;font-size:14px;text-align:center;margin:30px 0 0 0;">
+              Please contact support if you need assistance.
             </p>
           </div>
         </div>
@@ -198,133 +175,7 @@ router.post('/verifications/:transactionId/verify', async (req, res) => {
 
       await sendEmail({
         to: transaction.seller_email,
-        subject: `💸 Funds Transferred: $${transaction.seller_payout_amount} for ${transaction.domain_name}`,
-        html: sellerEmailHtml,
-        text: `Funds Transferred!\n\nHi ${sellerName},\n\nThe domain transfer for ${transaction.domain_name} has been verified, and $${transaction.seller_payout_amount} has been transferred to your Stripe account.\n\nTotal Sale: $${transaction.amount}\nPlatform Fee: $${transaction.platform_fee_amount}\nYour Payout: $${transaction.seller_payout_amount}\n\nFunds will appear in your Stripe balance within 1-2 business days.`,
-        tags: ['funds-transferred', 'seller-notification', `transaction-${transactionId}`]
-      });
-
-      // Notify buyer
-      const buyerEmailHtml = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
-            <div style="font-size:60px;margin-bottom:10px;">✅</div>
-            <h1 style="color:white;margin:0;font-size:28px;">Transfer Complete!</h1>
-          </div>
-          
-          <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
-            <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
-              Hi <strong>${transaction.buyer_name}</strong>,
-            </p>
-            
-            <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
-              Congratulations! The domain transfer for <strong>${transaction.domain_name}</strong> 
-              has been successfully verified and completed.
-            </p>
-            
-            <div style="background:white;border:2px solid #10b981;border-radius:12px;padding:25px;margin:25px 0;text-align:center;">
-              <div style="font-size:48px;margin-bottom:15px;">🎉</div>
-              <h2 style="margin:0;color:#059669;">You now own ${transaction.domain_name}</h2>
-            </div>
-            
-            <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
-              Thank you for your purchase!
-            </p>
-          </div>
-        </div>
-      `;
-
-      await sendEmail({
-        to: transaction.buyer_email,
-        subject: `✅ Transfer Complete: ${transaction.domain_name} is Now Yours!`,
-        html: buyerEmailHtml,
-        text: `Transfer Complete!\n\nHi ${transaction.buyer_name},\n\nCongratulations! The domain transfer for ${transaction.domain_name} has been successfully verified and completed. You now own the domain!\n\nThank you for your purchase!`,
-        tags: ['transfer-complete', 'buyer-notification', `transaction-${transactionId}`]
-      });
-
-      console.log('✅ Notification emails sent');
-
-    } else {
-      // ❌ VERIFICATION FAILED - Notify buyer about refund
-      const buyerEmailHtml = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <div style="background:linear-gradient(135deg,#ef4444 0%,#dc2626 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
-            <div style="font-size:60px;margin-bottom:10px;">🔄</div>
-            <h1 style="color:white;margin:0;font-size:28px;">Refund Processed</h1>
-          </div>
-          
-          <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
-            <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
-              Hi <strong>${transaction.buyer_name}</strong>,
-            </p>
-            
-            <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
-              We regret to inform you that the domain transfer for <strong>${transaction.domain_name}</strong> 
-              could not be completed. A full refund of <strong>$${transaction.amount}</strong> has been issued to your original payment method.
-            </p>
-            
-            <div style="background:white;border:2px solid #3b82f6;border-radius:12px;padding:25px;margin:25px 0;">
-              <h3 style="margin:0 0 15px 0;color:#1e40af;">💳 Refund Details</h3>
-              <p style="margin:5px 0;color:#334155;"><strong>Amount Refunded:</strong> $${transaction.amount} ${transaction.currency}</p>
-              <p style="margin:5px 0;color:#334155;"><strong>Refund ID:</strong> ${result.refundId}</p>
-              <p style="margin:15px 0 5px 0;color:#64748b;font-size:14px;">Refunds typically appear in 5-10 business days.</p>
-            </div>
-            
-            ${notes ? `
-            <div style="background:#fef3c7;border-radius:12px;padding:20px;margin:25px 0;">
-              <p style="margin:0;color:#92400e;"><strong>Note:</strong> ${notes}</p>
-            </div>
-            ` : ''}
-            
-            <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
-              If you have any questions, please contact our support team.
-            </p>
-          </div>
-        </div>
-      `;
-
-      await sendEmail({
-        to: transaction.buyer_email,
-        subject: `🔄 Refund Issued: ${transaction.domain_name}`,
-        html: buyerEmailHtml,
-        text: `Refund Issued\n\nHi ${transaction.buyer_name},\n\nThe domain transfer for ${transaction.domain_name} could not be completed. A full refund of $${transaction.amount} has been issued to your original payment method.\n\n${notes ? `Note: ${notes}\n\n` : ''}Refunds typically appear in 5-10 business days.\n\nIf you have any questions, please contact support.`,
-        tags: ['refund-issued', 'buyer-notification', `transaction-${transactionId}`]
-      });
-
-      // Notify seller
-      const sellerEmailHtml = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <div style="background:linear-gradient(135deg,#ef4444 0%,#dc2626 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
-            <div style="font-size:60px;margin-bottom:10px;">⚠️</div>
-            <h1 style="color:white;margin:0;font-size:28px;">Transfer Failed - Buyer Refunded</h1>
-          </div>
-          
-          <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
-            <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
-              Hi <strong>${sellerName}</strong>,
-            </p>
-            
-            <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
-              The domain transfer verification for <strong>${transaction.domain_name}</strong> has failed. 
-              The buyer has been issued a full refund.
-            </p>
-            
-            ${notes ? `
-            <div style="background:#fef3c7;border-radius:12px;padding:20px;margin:25px 0;">
-              <p style="margin:0;color:#92400e;"><strong>Reason:</strong> ${notes}</p>
-            </div>
-            ` : ''}
-            
-            <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
-              Please ensure domain transfers are completed promptly in the future.
-            </p>
-          </div>
-        </div>
-      `;
-
-      await sendEmail({
-        to: transaction.seller_email,
-        subject: `⚠️ Transfer Failed: ${transaction.domain_name}`,
+        subject: `Transfer Failed: ${transaction.domain_name}`,
         html: sellerEmailHtml,
         text: `Transfer Failed\n\nHi ${sellerName},\n\nThe domain transfer verification for ${transaction.domain_name} has failed. The buyer has been issued a full refund.\n\n${notes ? `Reason: ${notes}\n\n` : ''}Please ensure domain transfers are completed promptly in the future.`,
         tags: ['transfer-failed', 'seller-notification', `transaction-${transactionId}`]

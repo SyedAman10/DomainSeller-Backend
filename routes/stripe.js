@@ -420,32 +420,31 @@ router.post('/webhook', async (req, res) => {
             
             const buyerEmailHtml = `
               <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
-                <div style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
-                  <div style="font-size:60px;margin-bottom:10px;">✅</div>
-                  <h1 style="color:white;margin:0;font-size:28px;">Payment Received!</h1>
+                <div style="background:#111827;padding:30px;text-align:center;border-radius:16px 16px 0 0;">
+                  <h1 style="color:#f9fafb;margin:0;font-size:28px;">Payment Received</h1>
                 </div>
                 
-                <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
-                  <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
+                <div style="padding:40px;background:#0b0f14;color:#e5e7eb;border-radius:0 0 16px 16px;">
+                  <p style="font-size:18px;color:#e5e7eb;margin:0 0 25px 0;">
                     Hi <strong>${transaction.buyer_name}</strong>,
                   </p>
                   
-                  <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
+                  <p style="font-size:16px;color:#e5e7eb;line-height:1.6;margin:0 0 25px 0;">
                     Thank you for your purchase of <strong>${transaction.domain_name}</strong>! 
                     Your payment of <strong>$${transaction.amount}</strong> has been received and is being held securely.
                   </p>
                   
-                  <div style="background:white;border:2px solid #3b82f6;border-radius:12px;padding:25px;margin:25px 0;">
-                    <h3 style="margin:0 0 15px 0;color:#1e40af;">🔐 Secure Escrow Process</h3>
-                    <p style="color:#334155;line-height:1.6;margin:0;">
+                  <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:25px;margin:25px 0;">
+                    <h3 style="margin:0 0 15px 0;color:#e5e7eb;">Secure Escrow Process</h3>
+                    <p style="color:#e5e7eb;line-height:1.6;margin:0;">
                       Your payment is being held securely until the domain transfer is complete. 
                       This protects both you and the seller.
                     </p>
                   </div>
                   
-                  <div style="background:#dbeafe;border-radius:12px;padding:20px;margin:25px 0;">
-                    <h4 style="margin:0 0 10px 0;color:#1e40af;">📋 What Happens Next?</h4>
-                    <ol style="color:#1e3a8a;margin:0;padding-left:20px;line-height:1.8;">
+                  <div style="background:#0f172a;border-radius:12px;padding:20px;margin:25px 0;border:1px solid #1f2937;">
+                    <h4 style="margin:0 0 10px 0;color:#e5e7eb;">What Happens Next?</h4>
+                    <ol style="color:#e5e7eb;margin:0;padding-left:20px;line-height:1.8;">
                       <li>The seller will initiate the domain transfer</li>
                       <li>You'll receive the domain transfer authorization</li>
                       <li>Once you receive the domain, confirm below</li>
@@ -455,22 +454,22 @@ router.post('/webhook', async (req, res) => {
                   
                   <div style="text-align:center;margin:30px 0;">
                     <a href="${confirmationLink}" 
-                       style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.3);">
-                      ✓ CONFIRM DOMAIN RECEIVED
+                       style="display:inline-block;padding:16px 40px;background:#10b981;color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:16px;">
+                      CONFIRM DOMAIN RECEIVED
                     </a>
-                    <p style="color:#64748b;font-size:12px;margin-top:10px;">
+                    <p style="color:#94a3b8;font-size:12px;margin-top:10px;">
                       (Click this button only after you've successfully received the domain)
                     </p>
                   </div>
                   
-                  <div style="background:#fef3c7;border-radius:12px;padding:20px;margin:25px 0;">
-                    <p style="margin:0;color:#92400e;font-size:14px;">
-                      ⚠️ <strong>Important:</strong> Your funds are protected. If there's any issue with the 
+                  <div style="background:#111827;border-radius:12px;padding:20px;margin:25px 0;border:1px solid #1f2937;">
+                    <p style="margin:0;color:#e5e7eb;font-size:14px;">
+                      <strong>Important:</strong> Your funds are protected. If there's any issue with the 
                       domain transfer, you can request a refund through our support team.
                     </p>
                   </div>
                   
-                  <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
+                  <p style="color:#94a3b8;font-size:14px;text-align:center;margin:30px 0 0 0;">
                     Questions? Reply to this email or contact support@3vltn.com
                   </p>
                 </div>
@@ -479,9 +478,9 @@ router.post('/webhook', async (req, res) => {
             
             await sendEmail({
               to: transaction.buyer_email,
-              subject: `✅ Payment Received: ${transaction.domain_name} (Secure Escrow)`,
+              subject: `Payment Received: ${transaction.domain_name} (Secure Escrow)`,
               html: buyerEmailHtml,
-              text: `Payment Received!\n\nHi ${transaction.buyer_name},\n\nYour payment of $${transaction.amount} for ${transaction.domain_name} has been received and is being held securely in escrow.\n\nThe seller will initiate the domain transfer. Once you receive the domain, please confirm by clicking:\n${confirmationLink}\n\nYour funds are protected throughout this process.`,
+              text: `Payment Received\n\nHi ${transaction.buyer_name},\n\nYour payment of $${transaction.amount} for ${transaction.domain_name} has been received and is being held securely in escrow.\n\nThe seller will initiate the domain transfer. Once you receive the domain, please confirm by clicking:\n${confirmationLink}\n\nYour funds are protected throughout this process.`,
               tags: ['escrow-payment-received', 'buyer-notification', `transaction-${transaction.id}`]
             });
             
@@ -497,54 +496,53 @@ router.post('/webhook', async (req, res) => {
               
               const sellerEmailHtml = `
                 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
-                  <div style="background:linear-gradient(135deg,#3b82f6 0%,#2563eb 100%);padding:30px;text-align:center;border-radius:16px 16px 0 0;">
-                    <div style="font-size:60px;margin-bottom:10px;">💰</div>
-                    <h1 style="color:white;margin:0;font-size:28px;">Payment Received (Escrow)</h1>
+                  <div style="background:#111827;padding:30px;text-align:center;border-radius:16px 16px 0 0;">
+                    <h1 style="color:#f9fafb;margin:0;font-size:28px;">Payment Received (Escrow)</h1>
                   </div>
                   
-                  <div style="padding:40px;background:#f8fafc;border-radius:0 0 16px 16px;">
-                    <p style="font-size:18px;color:#334155;margin:0 0 25px 0;">
+                  <div style="padding:40px;background:#0b0f14;color:#e5e7eb;border-radius:0 0 16px 16px;">
+                    <p style="font-size:18px;color:#e5e7eb;margin:0 0 25px 0;">
                       Hi <strong>${sellerName}</strong>,
                     </p>
                     
-                    <p style="font-size:16px;color:#334155;line-height:1.6;margin:0 0 25px 0;">
+                    <p style="font-size:16px;color:#e5e7eb;line-height:1.6;margin:0 0 25px 0;">
                       Great news! Payment for <strong>${transaction.domain_name}</strong> has been received 
                       and is being held securely in escrow.
                     </p>
                     
-                    <div style="background:white;border:2px solid #10b981;border-radius:12px;padding:25px;margin:25px 0;">
-                      <h3 style="margin:0 0 20px 0;color:#059669;font-size:18px;">💳 Sale Details</h3>
+                    <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:25px;margin:25px 0;">
+                      <h3 style="margin:0 0 20px 0;color:#e5e7eb;font-size:18px;">Sale Details</h3>
                       <table style="width:100%;border-collapse:collapse;">
                         <tr>
-                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Domain:</td>
-                          <td style="padding:10px 0;color:#0f172a;font-weight:600;text-align:right;">${transaction.domain_name}</td>
+                          <td style="padding:10px 0;color:#94a3b8;font-size:14px;">Domain:</td>
+                          <td style="padding:10px 0;color:#e5e7eb;font-weight:600;text-align:right;">${transaction.domain_name}</td>
                         </tr>
                         <tr>
-                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Total Amount:</td>
-                          <td style="padding:10px 0;color:#334155;text-align:right;">$${transaction.amount}</td>
+                          <td style="padding:10px 0;color:#94a3b8;font-size:14px;">Total Amount:</td>
+                          <td style="padding:10px 0;color:#e5e7eb;text-align:right;">$${transaction.amount}</td>
                         </tr>
                         <tr>
-                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Platform Fee (10%):</td>
-                          <td style="padding:10px 0;color:#ef4444;text-align:right;">-$${transaction.platform_fee_amount}</td>
+                          <td style="padding:10px 0;color:#94a3b8;font-size:14px;">Platform Fee (10%):</td>
+                          <td style="padding:10px 0;color:#f87171;text-align:right;">-$${transaction.platform_fee_amount}</td>
                         </tr>
                         <tr style="border-top:2px solid #e5e7eb;">
-                          <td style="padding:15px 0 10px 0;color:#059669;font-weight:700;font-size:16px;">Your Payout:</td>
+                          <td style="padding:15px 0 10px 0;color:#e5e7eb;font-weight:700;font-size:16px;">Your Payout:</td>
                           <td style="padding:15px 0 10px 0;color:#10b981;font-weight:700;font-size:20px;text-align:right;">$${transaction.seller_payout_amount}</td>
                         </tr>
                         <tr>
-                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Buyer:</td>
-                          <td style="padding:10px 0;color:#0f172a;text-align:right;">${transaction.buyer_name}</td>
+                          <td style="padding:10px 0;color:#94a3b8;font-size:14px;">Buyer:</td>
+                          <td style="padding:10px 0;color:#e5e7eb;text-align:right;">${transaction.buyer_name}</td>
                         </tr>
                         <tr>
-                          <td style="padding:10px 0;color:#64748b;font-size:14px;">Buyer Email:</td>
-                          <td style="padding:10px 0;color:#0f172a;text-align:right;">${transaction.buyer_email}</td>
+                          <td style="padding:10px 0;color:#94a3b8;font-size:14px;">Buyer Email:</td>
+                          <td style="padding:10px 0;color:#e5e7eb;text-align:right;">${transaction.buyer_email}</td>
                         </tr>
                       </table>
                     </div>
                     
-                    <div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:12px;padding:20px;margin:25px 0;">
-                      <h4 style="margin:0 0 10px 0;color:#92400e;font-size:16px;">🔑 IMPORTANT: Next Steps</h4>
-                      <ol style="color:#78350f;margin:0;padding-left:20px;line-height:1.8;">
+                    <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px;margin:25px 0;">
+                      <h4 style="margin:0 0 10px 0;color:#e5e7eb;font-size:16px;">Next Steps</h4>
+                      <ol style="color:#e5e7eb;margin:0;padding-left:20px;line-height:1.8;">
                         <li><strong>Contact the buyer at ${transaction.buyer_email}</strong></li>
                         <li>Initiate the domain transfer from your registrar</li>
                         <li>Provide transfer authorization code to buyer</li>
@@ -553,14 +551,14 @@ router.post('/webhook', async (req, res) => {
                       </ol>
                     </div>
                     
-                    <div style="background:#dbeafe;border-radius:12px;padding:20px;margin:25px 0;">
-                      <p style="margin:0;color:#1e40af;font-size:14px;">
-                        💡 <strong>Escrow Protection:</strong> The buyer's payment is held securely until the 
+                    <div style="background:#0f172a;border-radius:12px;padding:20px;margin:25px 0;border:1px solid #1f2937;">
+                      <p style="margin:0;color:#e5e7eb;font-size:14px;">
+                        <strong>Escrow Protection:</strong> The buyer's payment is held securely until the 
                         domain transfer is verified. This protects both you and the buyer.
                       </p>
                     </div>
                     
-                    <p style="color:#64748b;font-size:14px;text-align:center;margin:30px 0 0 0;">
+                    <p style="color:#94a3b8;font-size:14px;text-align:center;margin:30px 0 0 0;">
                       Start the transfer process as soon as possible!
                     </p>
                   </div>
@@ -569,9 +567,9 @@ router.post('/webhook', async (req, res) => {
               
               await sendEmail({
                 to: seller.email,
-                subject: `💰 Payment Received (Escrow): ${transaction.domain_name}`,
+                subject: `Payment Received (Escrow): ${transaction.domain_name}`,
                 html: sellerEmailHtml,
-                text: `Payment Received!\n\nHi ${sellerName},\n\nPayment for ${transaction.domain_name} has been received and is being held in escrow.\n\nTotal: $${transaction.amount}\nYour Payout: $${transaction.seller_payout_amount}\n\nNext Steps:\n1. Contact buyer at ${transaction.buyer_email}\n2. Initiate domain transfer from your registrar\n3. Provide transfer authorization to buyer\n4. Wait for buyer confirmation\n5. After verification, receive your payout\n\nStart the transfer process now!`,
+                text: `Payment Received\n\nHi ${sellerName},\n\nPayment for ${transaction.domain_name} has been received and is being held in escrow.\n\nTotal: $${transaction.amount}\nPlatform Fee (10%): -$${transaction.platform_fee_amount}\nYour Payout: $${transaction.seller_payout_amount}\n\nNext Steps:\n1. Contact buyer at ${transaction.buyer_email}\n2. Initiate domain transfer from your registrar\n3. Provide transfer authorization to buyer\n4. Wait for buyer confirmation\n5. After verification, receive your payout\n\nStart the transfer process now!`,
                 tags: ['escrow-payment-received', 'seller-notification', `transaction-${transaction.id}`]
               });
             }
