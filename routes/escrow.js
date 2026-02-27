@@ -404,10 +404,10 @@ router.get('/approvals/:id/approve', async (req, res) => {
         <html>
           <head><title>Already Processed</title></head>
           <body style="font-family:Arial;padding:50px;text-align:center;">
-            <h1>ℹ️ Already ${request.status === 'approved' 'Approved' : 'Declined'}</h1>
+            <h1>ℹ️ Already ${request.status === 'approved' ? 'Approved' : 'Declined'}</h1>
             <p>This request was already ${request.status} on ${new Date(request.updated_at).toLocaleString()}</p>
             ${request.status === 'approved' && request.escrow_transaction_id 
-              `<p><strong>Transaction ID:</strong> ${request.escrow_transaction_id}</p>` : ''}
+              ? `<p><strong>Transaction ID:</strong> ${request.escrow_transaction_id}</p>` : ''}
           </body>
         </html>
       `);
