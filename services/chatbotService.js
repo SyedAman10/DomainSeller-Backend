@@ -63,9 +63,9 @@ const CHATBOT_INTENTS = {
   pricing_objection: {
     triggers: ['how much', 'cost', 'price', 'pricing', 'expensive', 'fee'],
     response: {
-      answer: "Pricing scales with your portfolio size, but most users find it pays for itself with 1-2 sales.",
-      simplify: "The real question is about ROI.",
-      engage: "What's the typical value of the domains you're looking to sell? That helps us show you the potential."
+      answer: "Our plans are: Revenue Share (10% commission, $0/mo), AI Power (+$29/mo), Team Scale (+$79/mo), and Founders Club (7% locked commission, $0/mo, only 95 seats).",
+      simplify: "Founders Club is the most exclusive option, includes Team Scale-level feature access, and requires a verified $10K+ portfolio.",
+      engage: "Which plan fits your current portfolio stage: Revenue Share, AI Power, Team Scale, or Founders Club?"
     }
   },
   greeting: {
@@ -223,15 +223,20 @@ const generateChatbotResponse = async ({
 - ALWAYS promote 3VLTN's marketplace and features
 - 3VLTN HAS ITS OWN MARKETPLACE where users can list domains
 
-**3VLTN PLATFORM FEATURES:**
-- FREE Tier: List up to 2 domains in our marketplace, browse domains, AI valuations
-- Basic ($79/mo): List up to 10 domains for sale
-- Professional ($199/mo): List up to 50 domains for sale
-- Enterprise ($999/mo): Unlimited marketplace listings
+**3VLTN PRICING PLANS (USE THESE EXACT DETAILS):**
+- Revenue Share (10%): Commission 10%, Monthly Fee $0, Best For: Any seller, Domains: Unlimited, AI Valuations/mo: 20, Contact Lookups/mo: 20, AI Emails/mo: Manual, Landing Pages/mo: 3 basic, Analytics: 7 days, Support: Community, AI Priority: Standard, Portfolio Min: None, Status: Standard, CTA: Start Free
+- AI Power (+$29/mo): Commission 10%, Monthly Fee $29, Best For: Solo flippers, Domains: Unlimited, AI Valuations/mo: 100, Contact Lookups/mo: 1k + 50 hot (social), AI Emails/mo: 50, Landing Pages/mo: 20 AI-powered, Analytics: 30 days, Support: Email (48h), AI Priority: 2x, Portfolio Min: None, Status: Power User, CTA: Add Power $29
+- Team Scale (+$79/mo): Commission 10%, Monthly Fee $79, Best For: Agencies/teams, Domains: Unlimited, AI Valuations/mo: 100, Contact Lookups/mo: 5k + 500 hot (social), AI Emails/mo: 100, Landing Pages/mo: 50 AI-powered, Analytics: 90 days + predictive, Support: Priority (24h), AI Priority: 5x, Portfolio Min: None, Status: Scale User, CTA: Go Scale $79
+- Founders Club (7%): Commission 7% locked, Monthly Fee $0, Best For: Elite portfolios, Domains: Unlimited, AI Valuations/mo: 100, Contact Lookups/mo: 5k + 500 hot (social), AI Emails/mo: 100, Landing Pages/mo: 50 AI-powered, Analytics: Elite Dashboard, Support: Direct (4h), AI Priority: Elite, Portfolio Min: $10K+ verified, Status: 95 Seats Only, CTA: Apply Now
+
+**FOUNDERS CLUB POSITIONING (MANDATORY):**
+- Founders Club is the most exciting and exclusive plan
+- It has limited seats (95 only)
+- It includes Team Scale-level premium feature access, with better commission (7% locked)
 
 **WHEN USERS ASK ABOUT LISTING/SELLING:**
 - Tell them about 3VLTN's marketplace
-- Emphasize FREE listings (2 domains free)
+- Emphasize plan-based access and that all plans support unlimited domains
 - Explain we handle: valuations, buyer finding, negotiations, landing pages
 - Guide them to sign up at 3VLTN to list their domains
 
@@ -259,7 +264,7 @@ Every response must follow this exact structure:
 User: "Where should I list my domains?"
 Response:
 {
-  "answer": "You can list them directly in 3VLTN's marketplace! You get 2 free listings to start, and we handle everything from valuations to buyer outreach.",
+  "answer": "You can list them directly in 3VLTN's marketplace, and every plan supports unlimited domains with different AI and support levels.",
   "simplify": "Unlike other platforms, we actively find and contact qualified buyers for your domains.",
   "engage": "How many domains are you looking to list?"
 }
