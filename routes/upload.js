@@ -10,7 +10,8 @@ const {
   ensureSchema,
   createJobWithDomains,
   getJobStatus,
-  getProcessedDomainResults
+  getProcessedDomainResults,
+  getJobResultsPaginated
 } = require('../services/portfolioService');
 
 const router = express.Router();
@@ -260,6 +261,74 @@ router.get('/job-status', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch job status',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /job-results?jobId=123&limit=25&offset=0
+ * Paginated processed/failed domain results for a job.
+ */
+router.get('/job-results', async (req, res) => {
+  try {
+    await ensureSchema();
+
+    const jobId = Number(req.query.jobId);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    if (!jobId) {
+      return res.status(400).json({
+        success: false,
+        message: 'jobId query parameter is required'
+      });
+    }
+
+    const job = await getJobStatus(jobId);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: 'Job not found'
+      });
+    }
+
+    const { rows, totalResults } = await getJobResultsPaginated({
+      jobId,
+      limit,
+      offset
+    });
+
+    const domainResults = rows.map((row) => ({
+      domain: row.domain,
+      price: row.estimated_price_usd || 0,
+      tier: row.tier,
+      score: row.score,
+      status: row.status,
+      reasoning: row.reasoning,
+      error: row.error_message,
+      attempts: row.attempts,
+      processedAt: row.processed_at
+    }));
+
+    return res.json({
+      success: true,
+      jobId,
+      status: job.status,
+      pagination: {
+        limit,
+        offset,
+        returned: domainResults.length,
+        totalResults,
+        hasMore: offset + domainResults.length < totalResults
+      },
+      domainResults
+    });
+  } catch (error) {
+    console.error('Failed to fetch job results:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch job results',
       error: error.message
     });
   }

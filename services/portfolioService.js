@@ -274,6 +274,46 @@ const getProcessedDomainResults = async (jobId, limit = 25) => {
   return result.rows;
 };
 
+const getJobResultsPaginated = async ({
+  jobId,
+  limit = 25,
+  offset = 0,
+  statuses = ['processed', 'failed']
+}) => {
+  const listResult = await query(
+    `SELECT
+      domain,
+      status,
+      score,
+      estimated_price_usd,
+      tier,
+      reasoning,
+      error_message,
+      attempts,
+      processed_at
+    FROM portfolio_domains
+    WHERE job_id = $1
+      AND status = ANY($2::text[])
+    ORDER BY processed_at ASC NULLS LAST, id ASC
+    LIMIT $3 OFFSET $4`,
+    [jobId, statuses, limit, offset]
+  );
+
+  const countResult = await query(
+    `SELECT
+      COUNT(*)::INT AS total_results
+    FROM portfolio_domains
+    WHERE job_id = $1
+      AND status = ANY($2::text[])`,
+    [jobId, statuses]
+  );
+
+  return {
+    rows: listResult.rows,
+    totalResults: countResult.rows[0]?.total_results || 0
+  };
+};
+
 module.exports = {
   ensureSchema,
   createJobWithDomains,
@@ -285,5 +325,6 @@ module.exports = {
   finalizeJobIfDone,
   markJobFailed,
   getJobStatus,
-  getProcessedDomainResults
+  getProcessedDomainResults,
+  getJobResultsPaginated
 };
