@@ -30,6 +30,7 @@ const ensureSchema = async () => {
       domain TEXT NOT NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'pending',
       score INTEGER,
+      estimated_price_usd INTEGER,
       tier VARCHAR(20),
       reasoning TEXT,
       error_message TEXT,
@@ -44,6 +45,11 @@ const ensureSchema = async () => {
   await query(`
     CREATE INDEX IF NOT EXISTS idx_portfolio_domains_job_status
     ON portfolio_domains(job_id, status);
+  `);
+
+  await query(`
+    ALTER TABLE portfolio_domains
+    ADD COLUMN IF NOT EXISTS estimated_price_usd INTEGER;
   `);
 
   schemaInitialized = true;
@@ -127,18 +133,19 @@ const claimPendingBatch = async (jobId, batchSize) => {
   return result.rows;
 };
 
-const saveDomainSuccess = async ({ domainRowId, score, tier, reasoning }) => {
+const saveDomainSuccess = async ({ domainRowId, score, tier, reasoning, estimatedPriceUsd }) => {
   await query(
     `UPDATE portfolio_domains
      SET status = 'processed',
          score = $2,
          tier = $3,
          reasoning = $4,
+         estimated_price_usd = $5,
          error_message = NULL,
          processed_at = NOW(),
          updated_at = NOW()
      WHERE id = $1`,
-    [domainRowId, score, tier, reasoning]
+    [domainRowId, score, tier, reasoning, estimatedPriceUsd]
   );
 };
 
@@ -250,6 +257,7 @@ const getProcessedDomainResults = async (jobId, limit = 25) => {
       domain,
       status,
       score,
+      estimated_price_usd,
       tier,
       reasoning,
       error_message,

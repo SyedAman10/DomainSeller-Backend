@@ -24,7 +24,7 @@ const upload = multer({
 
 const FIRST_SYNC_BATCH = Number(process.env.PORTFOLIO_FIRST_SYNC_BATCH || 25);
 const ONE_SHOT_MAX = Number(process.env.PORTFOLIO_ONE_SHOT_MAX || 25);
-const FIRST_BATCH_CONCURRENCY = Number(process.env.PORTFOLIO_FIRST_BATCH_CONCURRENCY || 6);
+const FIRST_BATCH_CONCURRENCY = Number(process.env.PORTFOLIO_FIRST_BATCH_CONCURRENCY || 3);
 
 const normalizeDomain = (value) => {
   if (!value) return '';
@@ -136,6 +136,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       });
 
       const previewResults = await getProcessedDomainResults(job.id, domains.length);
+      const domainResults = previewResults.map((row) => ({
+        domain: row.domain,
+        price: row.estimated_price_usd || 0,
+        tier: row.tier,
+        score: row.score
+      }));
 
       return res.status(201).json({
         success: true,
@@ -151,6 +157,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
           failedDomains: immediate.status?.failed_domains || 0
         },
         firstBatchResults: previewResults,
+        domainResults,
         isComplete: true
       });
     }
@@ -166,6 +173,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     await enqueuePortfolioJob(job.id);
     portfolioLog(`POST /upload enqueued remaining jobId=${job.id}`);
     const previewResults = await getProcessedDomainResults(job.id, FIRST_SYNC_BATCH);
+    const domainResults = previewResults.map((row) => ({
+      domain: row.domain,
+      price: row.estimated_price_usd || 0,
+      tier: row.tier,
+      score: row.score
+    }));
 
     return res.status(202).json({
       success: true,
@@ -183,6 +196,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
           domains.length - (immediate.status?.processed_domains || FIRST_SYNC_BATCH)
       },
       firstBatchResults: previewResults,
+      domainResults,
       isComplete: false
     });
   } catch (error) {

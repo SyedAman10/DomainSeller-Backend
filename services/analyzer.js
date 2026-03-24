@@ -4,6 +4,7 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_API_VERSION = '2023-06-01';
 
 let lastRequestAt = 0;
+let rateLimitedUntil = 0;
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -14,10 +15,21 @@ const clampScore = (value) => {
 };
 
 const toTier = (score) => {
-  if (score >= 80) return 'gold';
-  if (score >= 60) return 'premium';
-  if (score >= 40) return 'average';
-  return 'low';
+  if (score >= 80) return 'tier_1';
+  if (score >= 60) return 'tier_2';
+  if (score >= 40) return 'tier_3';
+  return 'tier_4';
+};
+
+const estimatePriceUsd = (score) => {
+  // Simple deterministic estimate from score for quick portfolio triage.
+  if (score >= 90) return 25000;
+  if (score >= 80) return 12000;
+  if (score >= 70) return 6000;
+  if (score >= 60) return 3000;
+  if (score >= 50) return 1200;
+  if (score >= 40) return 500;
+  return 100;
 };
 
 const parseAnthropicTextPayload = (text) => {
@@ -40,11 +52,19 @@ const waitForRateLimit = async () => {
   lastRequestAt = Date.now();
 };
 
+const waitForRateLimitCooldown = async () => {
+  const remaining = rateLimitedUntil - Date.now();
+  if (remaining > 0) {
+    await delay(remaining);
+  }
+};
+
 const analyzeDomain = async (domain) => {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY is not configured');
   }
 
+  await waitForRateLimitCooldown();
   await waitForRateLimit();
 
   const timeoutMs = Number(process.env.ANTHROPIC_TIMEOUT_MS || 20000);
@@ -61,14 +81,14 @@ const analyzeDomain = async (domain) => {
       },
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest',
-        max_tokens: 350,
-        temperature: 0.1,
+        max_tokens: Number(process.env.ANTHROPIC_MAX_TOKENS || 120),
+        temperature: 0,
         system:
           'You are a domain valuation assistant. Return only valid JSON with score (0-100) and reasoning.',
         messages: [
           {
             role: 'user',
-            content: `Analyze domain "${domain}" for brandability, memorability, commercial intent, and resale potential. Return JSON only: {"score": number, "reasoning": string}.`
+            content: `Analyze domain "${domain}" for brandability and resale potential. Keep reasoning under 35 words. Return JSON only: {"score": number, "reasoning": string}.`
           }
         ]
       }),
@@ -76,6 +96,14 @@ const analyzeDomain = async (domain) => {
     });
 
     if (!response.ok) {
+      if (response.status === 429) {
+        const retryAfterHeader = response.headers.get('retry-after');
+        const retrySeconds = Number(retryAfterHeader);
+        const cooldownMs = Number.isFinite(retrySeconds) && retrySeconds > 0
+          ? retrySeconds * 1000
+          : Number(process.env.ANTHROPIC_RATE_LIMIT_COOLDOWN_MS || 30000);
+        rateLimitedUntil = Date.now() + cooldownMs;
+      }
       const body = await response.text();
       throw new Error(`Anthropic API error ${response.status}: ${body}`);
     }
@@ -90,8 +118,9 @@ const analyzeDomain = async (domain) => {
     const score = clampScore(parsed.score);
     const reasoning = String(parsed.reasoning || 'No reasoning provided').slice(0, 5000);
     const tier = toTier(score);
+    const estimatedPriceUsd = estimatePriceUsd(score);
 
-    return { score, tier, reasoning };
+    return { score, tier, reasoning, estimatedPriceUsd };
   } catch (error) {
     if (error.name === 'AbortError') {
       throw new Error(`Anthropic request timed out after ${timeoutMs}ms`);
@@ -106,4 +135,3 @@ module.exports = {
   analyzeDomain,
   toTier
 };
-

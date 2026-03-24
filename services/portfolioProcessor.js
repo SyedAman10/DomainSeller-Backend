@@ -14,7 +14,7 @@ const processDomainsForJob = async ({
   jobId,
   maxDomains = Number.POSITIVE_INFINITY,
   batchSize = Number(process.env.PORTFOLIO_BATCH_SIZE || 15),
-  concurrency = Number(process.env.PORTFOLIO_PROCESS_CONCURRENCY || 4)
+  concurrency = Number(process.env.PORTFOLIO_PROCESS_CONCURRENCY || 2)
 }) => {
   portfolioLog(
     `processDomainsForJob start jobId=${jobId} maxDomains=${maxDomains} batchSize=${batchSize} concurrency=${concurrency}`
@@ -52,12 +52,13 @@ const processDomainsForJob = async ({
             `jobId=${jobId} processing domainRowId=${domainRow.id} domain=${domainRow.domain} attempt=${domainRow.attempts}`
           );
           const result = await analyzeDomain(domainRow.domain);
-          await saveDomainSuccess({
-            domainRowId: domainRow.id,
-            score: result.score,
-            tier: result.tier,
-            reasoning: result.reasoning
-          });
+        await saveDomainSuccess({
+          domainRowId: domainRow.id,
+          score: result.score,
+          tier: result.tier,
+          reasoning: result.reasoning,
+          estimatedPriceUsd: result.estimatedPriceUsd
+        });
           portfolioLog(
             `jobId=${jobId} SUCCESS domainRowId=${domainRow.id} score=${result.score} tier=${result.tier}`
           );
