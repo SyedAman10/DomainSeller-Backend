@@ -2,6 +2,7 @@ const { analyzeDomain } = require('./analyzer');
 const { portfolioLog } = require('./portfolioLogger');
 const {
   markJobStarted,
+  reclaimStaleProcessingDomains,
   claimPendingBatch,
   saveDomainSuccess,
   saveDomainFailure,
@@ -20,6 +21,10 @@ const processDomainsForJob = async ({
     `processDomainsForJob start jobId=${jobId} maxDomains=${maxDomains} batchSize=${batchSize} concurrency=${concurrency}`
   );
   await markJobStarted(jobId);
+  await reclaimStaleProcessingDomains(
+    jobId,
+    Number(process.env.PORTFOLIO_STALE_PROCESSING_SECONDS || 180)
+  );
 
   let processedAttempts = 0;
   let successUpdates = 0;

@@ -9,6 +9,7 @@ const ensureSchema = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS portfolio_jobs (
       id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER,
       filename TEXT NOT NULL,
       status VARCHAR(30) NOT NULL DEFAULT 'queued',
       total_domains INTEGER NOT NULL DEFAULT 0,
@@ -26,6 +27,7 @@ const ensureSchema = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS portfolio_domains (
       id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER,
       job_id BIGINT NOT NULL REFERENCES portfolio_jobs(id) ON DELETE CASCADE,
       domain TEXT NOT NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'pending',
@@ -48,23 +50,43 @@ const ensureSchema = async () => {
   `);
 
   await query(`
+    ALTER TABLE portfolio_jobs
+    ADD COLUMN IF NOT EXISTS user_id INTEGER;
+  `);
+
+  await query(`
+    ALTER TABLE portfolio_domains
+    ADD COLUMN IF NOT EXISTS user_id INTEGER;
+  `);
+
+  await query(`
     ALTER TABLE portfolio_domains
     ADD COLUMN IF NOT EXISTS estimated_price_usd INTEGER;
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_portfolio_jobs_user_id
+    ON portfolio_jobs(user_id, id);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_portfolio_domains_user_id
+    ON portfolio_domains(user_id, job_id, status);
   `);
 
   schemaInitialized = true;
 };
 
-const createJobWithDomains = async ({ filename, domains }) => {
+const createJobWithDomains = async ({ userId, filename, domains }) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     const jobResult = await client.query(
-      `INSERT INTO portfolio_jobs (filename, status, total_domains, created_at, updated_at)
-       VALUES ($1, 'queued', $2, NOW(), NOW())
-       RETURNING id, filename, status, total_domains, created_at`,
-      [filename, domains.length]
+      `INSERT INTO portfolio_jobs (user_id, filename, status, total_domains, created_at, updated_at)
+       VALUES ($1, $2, 'queued', $3, NOW(), NOW())
+       RETURNING id, user_id, filename, status, total_domains, created_at`,
+      [userId, filename, domains.length]
     );
     const job = jobResult.rows[0];
 
@@ -74,17 +96,22 @@ const createJobWithDomains = async ({ filename, domains }) => {
       const values = [];
       const placeholders = chunk
         .map((domain, idx) => {
-          const offset = idx * 2;
+          const offset = idx * 3;
           values.push(job.id, domain);
-          return `($${offset + 1}, $${offset + 2}, 'pending', NOW(), NOW())`;
+          return `($${offset + 1}, $${offset + 2}, $${offset + 3}, 'pending', NOW(), NOW())`;
         })
         .join(',');
 
+      const valuesWithUser = [];
+      for (let j = 0; j < values.length; j += 2) {
+        valuesWithUser.push(values[j], values[j + 1], userId);
+      }
+
       await client.query(
-        `INSERT INTO portfolio_domains (job_id, domain, status, created_at, updated_at)
+        `INSERT INTO portfolio_domains (job_id, domain, user_id, status, created_at, updated_at)
          VALUES ${placeholders}
          ON CONFLICT (job_id, domain) DO NOTHING`,
-        values
+        valuesWithUser
       );
     }
 
@@ -105,6 +132,27 @@ const markJobStarted = async (jobId) => {
      WHERE id = $1`,
     [jobId]
   );
+};
+
+const reclaimStaleProcessingDomains = async (jobId, staleAfterSeconds = 180) => {
+  const result = await query(
+    `UPDATE portfolio_domains
+     SET status = 'pending',
+         updated_at = NOW()
+     WHERE job_id = $1
+       AND status = 'processing'
+       AND updated_at < (NOW() - ($2::text || ' seconds')::interval)
+     RETURNING id`,
+    [jobId, staleAfterSeconds]
+  );
+
+  if (result.rowCount > 0) {
+    portfolioLog(
+      `DB reclaimStaleProcessingDomains jobId=${jobId} reclaimed=${result.rowCount} staleAfterSeconds=${staleAfterSeconds}`
+    );
+  }
+
+  return result.rowCount;
 };
 
 const claimPendingBatch = async (jobId, batchSize) => {
@@ -228,10 +276,13 @@ const markJobFailed = async (jobId, errorMessage) => {
   );
 };
 
-const getJobStatus = async (jobId) => {
+const getJobStatus = async (jobId, userId = null) => {
+  const whereClause = userId ? 'id = $1 AND user_id = $2' : 'id = $1';
+  const params = userId ? [jobId, userId] : [jobId];
   const result = await query(
     `SELECT
       id,
+      user_id,
       filename,
       status,
       total_domains,
@@ -244,14 +295,22 @@ const getJobStatus = async (jobId) => {
       updated_at,
       error_message
     FROM portfolio_jobs
-    WHERE id = $1`,
-    [jobId]
+    WHERE ${whereClause}`,
+    params
   );
 
   return result.rows[0] || null;
 };
 
-const getProcessedDomainResults = async (jobId, limit = 25) => {
+const getProcessedDomainResults = async (jobId, limit = 25, userId = null) => {
+  const whereClause = userId
+    ? `job_id = $1
+      AND user_id = $3
+      AND status IN ('processed', 'failed')`
+    : `job_id = $1
+      AND status IN ('processed', 'failed')`;
+
+  const params = userId ? [jobId, limit, userId] : [jobId, limit];
   const result = await query(
     `SELECT
       domain,
@@ -264,11 +323,10 @@ const getProcessedDomainResults = async (jobId, limit = 25) => {
       attempts,
       processed_at
     FROM portfolio_domains
-    WHERE job_id = $1
-      AND status IN ('processed', 'failed')
+    WHERE ${whereClause}
     ORDER BY processed_at ASC NULLS LAST, id ASC
     LIMIT $2`,
-    [jobId, limit]
+    params
   );
 
   return result.rows;
@@ -276,10 +334,20 @@ const getProcessedDomainResults = async (jobId, limit = 25) => {
 
 const getJobResultsPaginated = async ({
   jobId,
+  userId = null,
   limit = 25,
   offset = 0,
   statuses = ['processed', 'failed']
 }) => {
+  const whereClause = userId
+    ? `job_id = $1
+      AND user_id = $5
+      AND status = ANY($2::text[])`
+    : `job_id = $1
+      AND status = ANY($2::text[])`;
+  const listParams = userId ? [jobId, statuses, limit, offset, userId] : [jobId, statuses, limit, offset];
+  const countParams = userId ? [jobId, statuses, userId] : [jobId, statuses];
+
   const listResult = await query(
     `SELECT
       domain,
@@ -292,20 +360,22 @@ const getJobResultsPaginated = async ({
       attempts,
       processed_at
     FROM portfolio_domains
-    WHERE job_id = $1
-      AND status = ANY($2::text[])
+    WHERE ${whereClause}
     ORDER BY processed_at ASC NULLS LAST, id ASC
     LIMIT $3 OFFSET $4`,
-    [jobId, statuses, limit, offset]
+    listParams
   );
 
   const countResult = await query(
     `SELECT
       COUNT(*)::INT AS total_results
     FROM portfolio_domains
-    WHERE job_id = $1
-      AND status = ANY($2::text[])`,
-    [jobId, statuses]
+    WHERE ${
+      userId
+        ? `job_id = $1 AND user_id = $3 AND status = ANY($2::text[])`
+        : `job_id = $1 AND status = ANY($2::text[])`
+    }`,
+    countParams
   );
 
   return {
@@ -318,6 +388,7 @@ module.exports = {
   ensureSchema,
   createJobWithDomains,
   markJobStarted,
+  reclaimStaleProcessingDomains,
   claimPendingBatch,
   saveDomainSuccess,
   saveDomainFailure,

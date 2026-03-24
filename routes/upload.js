@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const csvParser = require('csv-parser');
 const { Readable } = require('stream');
+const { requireAuth } = require('../middleware/auth');
 
 const { enqueuePortfolioJob } = require('../queue');
 const { processDomainsForJob } = require('../services/portfolioProcessor');
@@ -15,6 +16,7 @@ const {
 } = require('../services/portfolioService');
 
 const router = express.Router();
+router.use(requireAuth);
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -23,9 +25,11 @@ const upload = multer({
   }
 });
 
-const FIRST_SYNC_BATCH = Number(process.env.PORTFOLIO_FIRST_SYNC_BATCH || 25);
-const ONE_SHOT_MAX = Number(process.env.PORTFOLIO_ONE_SHOT_MAX || 25);
+const FIRST_SYNC_BATCH = Number(process.env.PORTFOLIO_FIRST_SYNC_BATCH || 20);
+const ONE_SHOT_MAX = Number(process.env.PORTFOLIO_ONE_SHOT_MAX || 20);
 const FIRST_BATCH_CONCURRENCY = Number(process.env.PORTFOLIO_FIRST_BATCH_CONCURRENCY || 2);
+const SYNC_FIRST_BATCH_ENABLED =
+  String(process.env.PORTFOLIO_SYNC_FIRST_BATCH || 'true').toLowerCase() === 'true';
 
 const normalizeDomain = (value) => {
   if (!value) return '';
@@ -122,10 +126,34 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     const job = await createJobWithDomains({
+      userId: req.user.id,
       filename: req.file.originalname || 'domains.csv',
       domains
     });
     portfolioLog(`POST /upload created jobId=${job.id} total=${domains.length}`);
+
+    // Optional: disable synchronous processing entirely for faster, restart-safe uploads.
+    if (!SYNC_FIRST_BATCH_ENABLED) {
+      await enqueuePortfolioJob(job.id);
+      portfolioLog(`POST /upload async-only mode enabled, enqueued jobId=${job.id}`);
+      return res.status(202).json({
+        success: true,
+        message: 'Portfolio accepted and queued for background processing',
+        jobId: job.id,
+        stats: {
+          totalValidDomains: domains.length,
+          removedDuplicates,
+          invalidDomains: invalidCount,
+          processedDomains: 0,
+          successDomains: 0,
+          failedDomains: 0,
+          remainingDomains: domains.length
+        },
+        firstBatchResults: [],
+        domainResults: [],
+        isComplete: false
+      });
+    }
 
     // Small CSVs: process everything immediately in one shot.
     if (domains.length <= ONE_SHOT_MAX) {
@@ -136,7 +164,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         concurrency: FIRST_BATCH_CONCURRENCY
       });
 
-      const previewResults = await getProcessedDomainResults(job.id, domains.length);
+      const previewResults = await getProcessedDomainResults(job.id, domains.length, req.user.id);
       const domainResults = previewResults.map((row) => ({
         domain: row.domain,
         price: row.estimated_price_usd || 0,
@@ -173,7 +201,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
     await enqueuePortfolioJob(job.id);
     portfolioLog(`POST /upload enqueued remaining jobId=${job.id}`);
-    const previewResults = await getProcessedDomainResults(job.id, FIRST_SYNC_BATCH);
+    const previewResults = await getProcessedDomainResults(job.id, FIRST_SYNC_BATCH, req.user.id);
     const domainResults = previewResults.map((row) => ({
       domain: row.domain,
       price: row.estimated_price_usd || 0,
@@ -226,7 +254,7 @@ router.get('/job-status', async (req, res) => {
       });
     }
 
-    const job = await getJobStatus(jobId);
+    const job = await getJobStatus(jobId, req.user.id);
     if (!job) {
       return res.status(404).json({
         success: false,
@@ -295,6 +323,7 @@ router.get('/job-results', async (req, res) => {
 
     const { rows, totalResults } = await getJobResultsPaginated({
       jobId,
+      userId: req.user.id,
       limit,
       offset
     });
