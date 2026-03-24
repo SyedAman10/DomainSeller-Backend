@@ -24,6 +24,7 @@ const upload = multer({
 
 const FIRST_SYNC_BATCH = Number(process.env.PORTFOLIO_FIRST_SYNC_BATCH || 25);
 const ONE_SHOT_MAX = Number(process.env.PORTFOLIO_ONE_SHOT_MAX || 25);
+const FIRST_BATCH_CONCURRENCY = Number(process.env.PORTFOLIO_FIRST_BATCH_CONCURRENCY || 6);
 
 const normalizeDomain = (value) => {
   if (!value) return '';
@@ -130,7 +131,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       portfolioLog(`POST /upload one-shot mode jobId=${job.id}`);
       const immediate = await processDomainsForJob({
         jobId: job.id,
-        maxDomains: domains.length
+        maxDomains: domains.length,
+        concurrency: FIRST_BATCH_CONCURRENCY
       });
 
       const previewResults = await getProcessedDomainResults(job.id, domains.length);
@@ -157,7 +159,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     portfolioLog(`POST /upload hybrid mode jobId=${job.id} firstBatch=${FIRST_SYNC_BATCH}`);
     const immediate = await processDomainsForJob({
       jobId: job.id,
-      maxDomains: FIRST_SYNC_BATCH
+      maxDomains: FIRST_SYNC_BATCH,
+      concurrency: FIRST_BATCH_CONCURRENCY
     });
 
     await enqueuePortfolioJob(job.id);
