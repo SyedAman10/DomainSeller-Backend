@@ -44,6 +44,91 @@ const parseAnthropicTextPayload = (text) => {
   }
 };
 
+const parseStructuredJson = (text) => {
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('Unable to parse model response as JSON');
+  }
+};
+
+const shouldFallbackToOpenAI = (message) => {
+  const value = String(message || '').toLowerCase();
+  return (
+    value.includes('credit balance is too low') ||
+    value.includes('plans & billing') ||
+    value.includes('purchase credits') ||
+    value.includes('insufficient') ||
+    value.includes('billing')
+  );
+};
+
+const analyzeDomainWithOpenAI = async (domain) => {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured for fallback');
+  }
+
+  const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS || 20000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        temperature: 0,
+        max_tokens: Number(process.env.OPENAI_MAX_TOKENS || 120),
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a domain valuation assistant. Return only JSON with score (0-100) and reasoning.'
+          },
+          {
+            role: 'user',
+            content: `Analyze domain "${domain}" for brandability and resale potential. Keep reasoning under 35 words. Return JSON only: {"score": number, "reasoning": string}.`
+          }
+        ]
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`OpenAI API error ${response.status}: ${body}`);
+    }
+
+    const payload = await response.json();
+    const text = payload?.choices?.[0]?.message?.content;
+    if (!text) {
+      throw new Error('OpenAI API returned empty content');
+    }
+
+    const parsed = parseStructuredJson(text);
+    const score = clampScore(parsed.score);
+    const reasoning = String(parsed.reasoning || 'No reasoning provided').slice(0, 5000);
+    const tier = toTier(score);
+    const estimatedPriceUsd = estimatePriceUsd(score);
+
+    return { score, tier, reasoning, estimatedPriceUsd, provider: 'openai' };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error(`OpenAI request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 const waitForRateLimit = async () => {
   const minDelayMs = Number(process.env.ANTHROPIC_MIN_DELAY_MS || 1300);
   const elapsed = Date.now() - lastRequestAt;
@@ -74,8 +159,12 @@ const waitForThrottleSlot = async () => {
 };
 
 const analyzeDomain = async (domain) => {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY is not configured');
+  if (!process.env.ANTHROPIC_API_KEY && process.env.OPENAI_API_KEY) {
+    return analyzeDomainWithOpenAI(domain);
+  }
+
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY) {
+    throw new Error('Neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is configured');
   }
 
   const max429Retries = Number(process.env.ANTHROPIC_429_MAX_RETRIES || 5);
@@ -128,6 +217,9 @@ const analyzeDomain = async (domain) => {
           throw new Error(`Anthropic API error 429: ${body}`);
         }
         const body = await response.text();
+        if (response.status === 400 && shouldFallbackToOpenAI(body) && process.env.OPENAI_API_KEY) {
+          return analyzeDomainWithOpenAI(domain);
+        }
         throw new Error(`Anthropic API error ${response.status}: ${body}`);
       }
 
@@ -143,7 +235,7 @@ const analyzeDomain = async (domain) => {
       const tier = toTier(score);
       const estimatedPriceUsd = estimatePriceUsd(score);
 
-      return { score, tier, reasoning, estimatedPriceUsd };
+      return { score, tier, reasoning, estimatedPriceUsd, provider: 'anthropic' };
     } catch (error) {
       if (error.name === 'AbortError') {
         throw new Error(`Anthropic request timed out after ${timeoutMs}ms`);
