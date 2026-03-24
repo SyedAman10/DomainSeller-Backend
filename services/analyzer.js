@@ -1,0 +1,109 @@
+const fetch = require('node-fetch');
+
+const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_API_VERSION = '2023-06-01';
+
+let lastRequestAt = 0;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const clampScore = (value) => {
+  const n = Number(value);
+  if (Number.isNaN(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+};
+
+const toTier = (score) => {
+  if (score >= 80) return 'gold';
+  if (score >= 60) return 'premium';
+  if (score >= 40) return 'average';
+  return 'low';
+};
+
+const parseAnthropicTextPayload = (text) => {
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    // Try to recover JSON content if model wraps it in markdown or extra text.
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('Unable to parse Anthropic response as JSON');
+  }
+};
+
+const waitForRateLimit = async () => {
+  const minDelayMs = Number(process.env.ANTHROPIC_MIN_DELAY_MS || 350);
+  const elapsed = Date.now() - lastRequestAt;
+  if (elapsed < minDelayMs) {
+    await delay(minDelayMs - elapsed);
+  }
+  lastRequestAt = Date.now();
+};
+
+const analyzeDomain = async (domain) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY is not configured');
+  }
+
+  await waitForRateLimit();
+
+  const timeoutMs = Number(process.env.ANTHROPIC_TIMEOUT_MS || 20000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(ANTHROPIC_API_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': ANTHROPIC_API_VERSION,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest',
+        max_tokens: 350,
+        temperature: 0.1,
+        system:
+          'You are a domain valuation assistant. Return only valid JSON with score (0-100) and reasoning.',
+        messages: [
+          {
+            role: 'user',
+            content: `Analyze domain "${domain}" for brandability, memorability, commercial intent, and resale potential. Return JSON only: {"score": number, "reasoning": string}.`
+          }
+        ]
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Anthropic API error ${response.status}: ${body}`);
+    }
+
+    const payload = await response.json();
+    const text = payload?.content?.[0]?.text;
+    if (!text) {
+      throw new Error('Anthropic API returned empty content');
+    }
+
+    const parsed = parseAnthropicTextPayload(text);
+    const score = clampScore(parsed.score);
+    const reasoning = String(parsed.reasoning || 'No reasoning provided').slice(0, 5000);
+    const tier = toTier(score);
+
+    return { score, tier, reasoning };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error(`Anthropic request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+module.exports = {
+  analyzeDomain,
+  toTier
+};
+

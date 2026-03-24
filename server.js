@@ -24,6 +24,7 @@ const buyerRoutes = require('./routes/buyer');
 const salesRoutes = require('./routes/sales');
 const aiAgentRoutes = require('./routes/aiAgent');
 const socialLeadsRoutes = require('./routes/socialLeads');
+const portfolioUploadRoutes = require('./routes/upload');
 
 // Try to load registrar routes - may fail if dependencies are missing
 let registrarRoutes = null;
@@ -197,6 +198,7 @@ app.use('/backend/buyer', buyerRoutes);
 app.use('/backend/sales', salesRoutes);
 app.use('/backend/ai-agent', aiAgentRoutes);
 app.use('/api/social-leads', socialLeadsRoutes);
+app.use('/backend/portfolio', portfolioUploadRoutes);
 
 // Only register registrar routes if they loaded successfully
 if (registrarRoutes) {
