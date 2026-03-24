@@ -237,6 +237,28 @@ const getJobStatus = async (jobId) => {
   return result.rows[0] || null;
 };
 
+const getProcessedDomainResults = async (jobId, limit = 25) => {
+  const result = await query(
+    `SELECT
+      domain,
+      status,
+      score,
+      tier,
+      reasoning,
+      error_message,
+      attempts,
+      processed_at
+    FROM portfolio_domains
+    WHERE job_id = $1
+      AND status IN ('processed', 'failed')
+    ORDER BY processed_at ASC NULLS LAST, id ASC
+    LIMIT $2`,
+    [jobId, limit]
+  );
+
+  return result.rows;
+};
+
 module.exports = {
   ensureSchema,
   createJobWithDomains,
@@ -247,6 +269,6 @@ module.exports = {
   updateJobProgress,
   finalizeJobIfDone,
   markJobFailed,
-  getJobStatus
+  getJobStatus,
+  getProcessedDomainResults
 };
-

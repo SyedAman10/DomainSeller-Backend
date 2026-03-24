@@ -4,10 +4,12 @@ const csvParser = require('csv-parser');
 const { Readable } = require('stream');
 
 const { enqueuePortfolioJob } = require('../queue');
+const { processDomainsForJob } = require('../services/portfolioProcessor');
 const {
   ensureSchema,
   createJobWithDomains,
-  getJobStatus
+  getJobStatus,
+  getProcessedDomainResults
 } = require('../services/portfolioService');
 
 const router = express.Router();
@@ -18,6 +20,9 @@ const upload = multer({
     fileSize: Number(process.env.PORTFOLIO_CSV_MAX_SIZE || 5 * 1024 * 1024) // 5MB default
   }
 });
+
+const FIRST_SYNC_BATCH = Number(process.env.PORTFOLIO_FIRST_SYNC_BATCH || 25);
+const ONE_SHOT_MAX = Number(process.env.PORTFOLIO_ONE_SHOT_MAX || 25);
 
 const normalizeDomain = (value) => {
   if (!value) return '';
@@ -112,17 +117,59 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       domains
     });
 
+    // Small CSVs: process everything immediately in one shot.
+    if (domains.length <= ONE_SHOT_MAX) {
+      const immediate = await processDomainsForJob({
+        jobId: job.id,
+        maxDomains: domains.length
+      });
+
+      const previewResults = await getProcessedDomainResults(job.id, domains.length);
+
+      return res.status(201).json({
+        success: true,
+        message: 'Portfolio processed in one shot',
+        jobId: job.id,
+        status: immediate.status?.status || 'completed',
+        stats: {
+          totalValidDomains: domains.length,
+          removedDuplicates,
+          invalidDomains: invalidCount,
+          processedDomains: immediate.status?.processed_domains || domains.length,
+          successDomains: immediate.status?.success_domains || 0,
+          failedDomains: immediate.status?.failed_domains || 0
+        },
+        firstBatchResults: previewResults,
+        isComplete: true
+      });
+    }
+
+    // Large CSVs: process first chunk now for engagement, queue the rest.
+    const immediate = await processDomainsForJob({
+      jobId: job.id,
+      maxDomains: FIRST_SYNC_BATCH
+    });
+
     await enqueuePortfolioJob(job.id);
+    const previewResults = await getProcessedDomainResults(job.id, FIRST_SYNC_BATCH);
 
     return res.status(202).json({
       success: true,
-      message: 'Portfolio accepted and queued for background processing',
+      message:
+        'First batch processed. Remaining domains queued for background processing.',
       jobId: job.id,
       stats: {
         totalValidDomains: domains.length,
         removedDuplicates,
-        invalidDomains: invalidCount
-      }
+        invalidDomains: invalidCount,
+        processedDomains: immediate.status?.processed_domains || 0,
+        successDomains: immediate.status?.success_domains || 0,
+        failedDomains: immediate.status?.failed_domains || 0,
+        remainingDomains:
+          domains.length - (immediate.status?.processed_domains || FIRST_SYNC_BATCH)
+      },
+      firstBatchResults: previewResults,
+      isComplete: false
     });
   } catch (error) {
     console.error('Portfolio upload failed:', error);
@@ -187,4 +234,3 @@ router.get('/job-status', async (req, res) => {
 });
 
 module.exports = router;
-

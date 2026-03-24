@@ -2,15 +2,9 @@ require('dotenv').config();
 
 const { Worker } = require('bullmq');
 const { redisConnection, DOMAIN_PORTFOLIO_QUEUE } = require('./queue');
-const { analyzeDomain } = require('./services/analyzer');
+const { processDomainsForJob } = require('./services/portfolioProcessor');
 const {
   ensureSchema,
-  markJobStarted,
-  claimPendingBatch,
-  saveDomainSuccess,
-  saveDomainFailure,
-  updateJobProgress,
-  finalizeJobIfDone,
   markJobFailed,
   getJobStatus
 } = require('./services/portfolioService');
@@ -25,42 +19,18 @@ const processPortfolioJob = async (job) => {
   if (!jobId) throw new Error('Missing jobId in queue payload');
 
   await ensureSchema();
-  await markJobStarted(jobId);
 
-  while (true) {
-    const batch = await claimPendingBatch(jobId, BATCH_SIZE);
+  await processDomainsForJob({
+    jobId,
+    batchSize: BATCH_SIZE
+  });
 
-    if (!batch.length) break;
-
-    for (const domainRow of batch) {
-      try {
-        const result = await analyzeDomain(domainRow.domain);
-        await saveDomainSuccess({
-          domainRowId: domainRow.id,
-          score: result.score,
-          tier: result.tier,
-          reasoning: result.reasoning
-        });
-      } catch (error) {
-        await saveDomainFailure({
-          domainRowId: domainRow.id,
-          attempts: domainRow.attempts,
-          errorMessage: error.message || 'Unknown domain processing error'
-        });
-      }
-
-      await updateJobProgress(jobId);
-      const status = await getJobStatus(jobId);
-      const percent =
-        status && status.total_domains > 0
-          ? Math.round((status.processed_domains / status.total_domains) * 100)
-          : 0;
-      await job.updateProgress(percent);
-    }
-  }
-
-  await updateJobProgress(jobId);
-  await finalizeJobIfDone(jobId);
+  const status = await getJobStatus(jobId);
+  const percent =
+    status && status.total_domains > 0
+      ? Math.round((status.processed_domains / status.total_domains) * 100)
+      : 100;
+  await job.updateProgress(percent);
 };
 
 const worker = new Worker(DOMAIN_PORTFOLIO_QUEUE, processPortfolioJob, {
@@ -91,4 +61,3 @@ worker.on('error', (err) => {
 console.log(
   `Portfolio worker started (concurrency=${WORKER_CONCURRENCY}, batch=${BATCH_SIZE}, rate=${RATE_LIMIT_MAX}/${RATE_LIMIT_DURATION}ms)`
 );
-
