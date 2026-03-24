@@ -25,7 +25,7 @@ const upload = multer({
 
 const FIRST_SYNC_BATCH = Number(process.env.PORTFOLIO_FIRST_SYNC_BATCH || 25);
 const ONE_SHOT_MAX = Number(process.env.PORTFOLIO_ONE_SHOT_MAX || 25);
-const FIRST_BATCH_CONCURRENCY = Number(process.env.PORTFOLIO_FIRST_BATCH_CONCURRENCY || 3);
+const FIRST_BATCH_CONCURRENCY = Number(process.env.PORTFOLIO_FIRST_BATCH_CONCURRENCY || 2);
 
 const normalizeDomain = (value) => {
   if (!value) return '';

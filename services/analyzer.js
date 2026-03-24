@@ -5,6 +5,7 @@ const ANTHROPIC_API_VERSION = '2023-06-01';
 
 let lastRequestAt = 0;
 let rateLimitedUntil = 0;
+let throttleChain = Promise.resolve();
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -44,7 +45,7 @@ const parseAnthropicTextPayload = (text) => {
 };
 
 const waitForRateLimit = async () => {
-  const minDelayMs = Number(process.env.ANTHROPIC_MIN_DELAY_MS || 350);
+  const minDelayMs = Number(process.env.ANTHROPIC_MIN_DELAY_MS || 1300);
   const elapsed = Date.now() - lastRequestAt;
   if (elapsed < minDelayMs) {
     await delay(minDelayMs - elapsed);
@@ -59,76 +60,101 @@ const waitForRateLimitCooldown = async () => {
   }
 };
 
+const waitForThrottleSlot = async () => {
+  const previous = throttleChain;
+  let releaseNext;
+  throttleChain = new Promise((resolve) => {
+    releaseNext = resolve;
+  });
+
+  await previous;
+  await waitForRateLimitCooldown();
+  await waitForRateLimit();
+  releaseNext();
+};
+
 const analyzeDomain = async (domain) => {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY is not configured');
   }
 
-  await waitForRateLimitCooldown();
-  await waitForRateLimit();
+  const max429Retries = Number(process.env.ANTHROPIC_429_MAX_RETRIES || 5);
 
-  const timeoutMs = Number(process.env.ANTHROPIC_TIMEOUT_MS || 20000);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  for (let attempt = 0; attempt <= max429Retries; attempt += 1) {
+    await waitForThrottleSlot();
 
-  try {
-    const response = await fetch(ANTHROPIC_API_URL, {
-      method: 'POST',
-      headers: {
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': ANTHROPIC_API_VERSION,
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest',
-        max_tokens: Number(process.env.ANTHROPIC_MAX_TOKENS || 120),
-        temperature: 0,
-        system:
-          'You are a domain valuation assistant. Return only valid JSON with score (0-100) and reasoning.',
-        messages: [
-          {
-            role: 'user',
-            content: `Analyze domain "${domain}" for brandability and resale potential. Keep reasoning under 35 words. Return JSON only: {"score": number, "reasoning": string}.`
+    const timeoutMs = Number(process.env.ANTHROPIC_TIMEOUT_MS || 20000);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers: {
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': ANTHROPIC_API_VERSION,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest',
+          max_tokens: Number(process.env.ANTHROPIC_MAX_TOKENS || 120),
+          temperature: 0,
+          system:
+            'You are a domain valuation assistant. Return only valid JSON with score (0-100) and reasoning.',
+          messages: [
+            {
+              role: 'user',
+              content: `Analyze domain "${domain}" for brandability and resale potential. Keep reasoning under 35 words. Return JSON only: {"score": number, "reasoning": string}.`
+            }
+          ]
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          const retryAfterHeader = response.headers.get('retry-after');
+          const retrySeconds = Number(retryAfterHeader);
+          const fallbackBase = Number(process.env.ANTHROPIC_RATE_LIMIT_COOLDOWN_MS || 30000);
+          const backoffMs = fallbackBase * Math.max(1, attempt + 1);
+          const cooldownMs =
+            Number.isFinite(retrySeconds) && retrySeconds > 0 ? retrySeconds * 1000 : backoffMs;
+
+          rateLimitedUntil = Date.now() + cooldownMs;
+          const body = await response.text();
+          if (attempt < max429Retries) {
+            continue;
           }
-        ]
-      }),
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        const retryAfterHeader = response.headers.get('retry-after');
-        const retrySeconds = Number(retryAfterHeader);
-        const cooldownMs = Number.isFinite(retrySeconds) && retrySeconds > 0
-          ? retrySeconds * 1000
-          : Number(process.env.ANTHROPIC_RATE_LIMIT_COOLDOWN_MS || 30000);
-        rateLimitedUntil = Date.now() + cooldownMs;
+          throw new Error(`Anthropic API error 429: ${body}`);
+        }
+        const body = await response.text();
+        throw new Error(`Anthropic API error ${response.status}: ${body}`);
       }
-      const body = await response.text();
-      throw new Error(`Anthropic API error ${response.status}: ${body}`);
-    }
 
-    const payload = await response.json();
-    const text = payload?.content?.[0]?.text;
-    if (!text) {
-      throw new Error('Anthropic API returned empty content');
-    }
+      const payload = await response.json();
+      const text = payload?.content?.[0]?.text;
+      if (!text) {
+        throw new Error('Anthropic API returned empty content');
+      }
 
-    const parsed = parseAnthropicTextPayload(text);
-    const score = clampScore(parsed.score);
-    const reasoning = String(parsed.reasoning || 'No reasoning provided').slice(0, 5000);
-    const tier = toTier(score);
-    const estimatedPriceUsd = estimatePriceUsd(score);
+      const parsed = parseAnthropicTextPayload(text);
+      const score = clampScore(parsed.score);
+      const reasoning = String(parsed.reasoning || 'No reasoning provided').slice(0, 5000);
+      const tier = toTier(score);
+      const estimatedPriceUsd = estimatePriceUsd(score);
 
-    return { score, tier, reasoning, estimatedPriceUsd };
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      throw new Error(`Anthropic request timed out after ${timeoutMs}ms`);
+      return { score, tier, reasoning, estimatedPriceUsd };
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error(`Anthropic request timed out after ${timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw new Error('Anthropic analysis failed after retries');
 };
 
 module.exports = {

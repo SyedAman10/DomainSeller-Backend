@@ -12,8 +12,8 @@ const {
 
 const BATCH_SIZE = Number(process.env.PORTFOLIO_BATCH_SIZE || 15);
 const WORKER_CONCURRENCY = Number(process.env.PORTFOLIO_WORKER_CONCURRENCY || 1);
-const RATE_LIMIT_MAX = Number(process.env.PORTFOLIO_RATE_LIMIT_MAX || 2);
-const RATE_LIMIT_DURATION = Number(process.env.PORTFOLIO_RATE_LIMIT_DURATION_MS || 1000);
+const RATE_LIMIT_MAX = Number(process.env.PORTFOLIO_RATE_LIMIT_MAX || 1);
+const RATE_LIMIT_DURATION = Number(process.env.PORTFOLIO_RATE_LIMIT_DURATION_MS || 1300);
 const WORKER_DOMAIN_CONCURRENCY = Number(process.env.PORTFOLIO_WORKER_DOMAIN_CONCURRENCY || 2);
 
 const processPortfolioJob = async (job) => {
