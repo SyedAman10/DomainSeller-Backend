@@ -1,4 +1,5 @@
 const { pool, query } = require('../config/database');
+const { portfolioLog } = require('./portfolioLogger');
 
 let schemaInitialized = false;
 
@@ -122,6 +123,7 @@ const claimPendingBatch = async (jobId, batchSize) => {
     [jobId, batchSize]
   );
 
+  portfolioLog(`DB claimPendingBatch jobId=${jobId} batchSize=${batchSize} claimed=${result.rows.length}`);
   return result.rows;
 };
 
@@ -173,6 +175,10 @@ const updateJobProgress = async (jobId) => {
      WHERE j.id = stats.job_id`,
     [jobId]
   );
+  const status = await getJobStatus(jobId);
+  portfolioLog(
+    `DB updateJobProgress jobId=${jobId} processed=${status?.processed_domains}/${status?.total_domains} success=${status?.success_domains} failed=${status?.failed_domains} status=${status?.status}`
+  );
 };
 
 const finalizeJobIfDone = async (jobId) => {
@@ -198,6 +204,7 @@ const finalizeJobIfDone = async (jobId) => {
      WHERE id = $1`,
     [jobId, failedCount > 0 ? 'completed_with_errors' : 'completed']
   );
+  portfolioLog(`DB finalizeJobIfDone jobId=${jobId} finalStatus=${failedCount > 0 ? 'completed_with_errors' : 'completed'}`);
 
   return true;
 };

@@ -3,6 +3,7 @@ require('dotenv').config();
 const { Worker } = require('bullmq');
 const { redisConnection, DOMAIN_PORTFOLIO_QUEUE } = require('./queue');
 const { processDomainsForJob } = require('./services/portfolioProcessor');
+const { portfolioLog } = require('./services/portfolioLogger');
 const {
   ensureSchema,
   markJobFailed,
@@ -18,6 +19,7 @@ const processPortfolioJob = async (job) => {
   const { jobId } = job.data;
   if (!jobId) throw new Error('Missing jobId in queue payload');
 
+  portfolioLog(`worker picked queueJobId=${job.id} dbJobId=${jobId}`);
   await ensureSchema();
 
   await processDomainsForJob({
@@ -31,6 +33,9 @@ const processPortfolioJob = async (job) => {
       ? Math.round((status.processed_domains / status.total_domains) * 100)
       : 100;
   await job.updateProgress(percent);
+  portfolioLog(
+    `worker finished dbJobId=${jobId} queueJobId=${job.id} progress=${percent}% status=${status?.status}`
+  );
 };
 
 const worker = new Worker(DOMAIN_PORTFOLIO_QUEUE, processPortfolioJob, {
@@ -44,10 +49,14 @@ const worker = new Worker(DOMAIN_PORTFOLIO_QUEUE, processPortfolioJob, {
 
 worker.on('completed', (job) => {
   console.log(`Portfolio job completed: ${job.id}`);
+  portfolioLog(`worker event completed queueJobId=${job.id} data=${JSON.stringify(job.data)}`);
 });
 
 worker.on('failed', async (job, err) => {
   console.error(`Portfolio job failed: ${job?.id || 'unknown'}`, err.message);
+  portfolioLog(
+    `worker event failed queueJobId=${job?.id || 'unknown'} dbJobId=${job?.data?.jobId || 'n/a'} error=${err.message}`
+  );
   const dbJobId = job?.data?.jobId;
   if (dbJobId) {
     await markJobFailed(dbJobId, err.message);
@@ -56,6 +65,7 @@ worker.on('failed', async (job, err) => {
 
 worker.on('error', (err) => {
   console.error('Worker runtime error:', err);
+  portfolioLog(`worker runtime error=${err.message}`);
 });
 
 console.log(

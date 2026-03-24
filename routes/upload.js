@@ -5,6 +5,7 @@ const { Readable } = require('stream');
 
 const { enqueuePortfolioJob } = require('../queue');
 const { processDomainsForJob } = require('../services/portfolioProcessor');
+const { portfolioLog } = require('../services/portfolioLogger');
 const {
   ensureSchema,
   createJobWithDomains,
@@ -93,6 +94,9 @@ const parseCsvDomains = async (buffer) => {
  */
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
+    portfolioLog(
+      `POST /upload start fileName=${req.file?.originalname || 'n/a'} fileSize=${req.file?.size || 0}`
+    );
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -103,6 +107,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     await ensureSchema();
 
     const { domains, removedDuplicates, invalidCount } = await parseCsvDomains(req.file.buffer);
+    portfolioLog(
+      `POST /upload parsed valid=${domains.length} removedDuplicates=${removedDuplicates} invalid=${invalidCount}`
+    );
 
     if (!domains.length) {
       return res.status(400).json({
@@ -116,9 +123,11 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       filename: req.file.originalname || 'domains.csv',
       domains
     });
+    portfolioLog(`POST /upload created jobId=${job.id} total=${domains.length}`);
 
     // Small CSVs: process everything immediately in one shot.
     if (domains.length <= ONE_SHOT_MAX) {
+      portfolioLog(`POST /upload one-shot mode jobId=${job.id}`);
       const immediate = await processDomainsForJob({
         jobId: job.id,
         maxDomains: domains.length
@@ -145,12 +154,14 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     // Large CSVs: process first chunk now for engagement, queue the rest.
+    portfolioLog(`POST /upload hybrid mode jobId=${job.id} firstBatch=${FIRST_SYNC_BATCH}`);
     const immediate = await processDomainsForJob({
       jobId: job.id,
       maxDomains: FIRST_SYNC_BATCH
     });
 
     await enqueuePortfolioJob(job.id);
+    portfolioLog(`POST /upload enqueued remaining jobId=${job.id}`);
     const previewResults = await getProcessedDomainResults(job.id, FIRST_SYNC_BATCH);
 
     return res.status(202).json({
@@ -173,6 +184,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     });
   } catch (error) {
     console.error('Portfolio upload failed:', error);
+    portfolioLog(`POST /upload error=${error.message}`);
     return res.status(500).json({
       success: false,
       message: 'Failed to upload and queue portfolio',
@@ -208,6 +220,9 @@ router.get('/job-status', async (req, res) => {
       job.total_domains > 0
         ? Math.round((job.processed_domains / job.total_domains) * 100)
         : 0;
+    portfolioLog(
+      `GET /job-status jobId=${job.id} status=${job.status} processed=${job.processed_domains}/${job.total_domains} completion=${completion}%`
+    );
 
     return res.json({
       success: true,
