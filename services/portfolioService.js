@@ -144,9 +144,9 @@ const saveDomainFailure = async ({ domainRowId, attempts, errorMessage }) => {
   const shouldRetry = attempts < 3;
   await query(
     `UPDATE portfolio_domains
-     SET status = $2,
+     SET status = $2::varchar(20),
          error_message = $3,
-         processed_at = CASE WHEN $2 = 'failed' THEN NOW() ELSE NULL END,
+         processed_at = CASE WHEN $2::varchar(20) = 'failed' THEN NOW() ELSE NULL END,
          updated_at = NOW()
      WHERE id = $1`,
     [domainRowId, shouldRetry ? 'pending' : 'failed', errorMessage.slice(0, 2000)]
