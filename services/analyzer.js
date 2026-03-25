@@ -22,15 +22,41 @@ const toTier = (score) => {
   return 'tier_4';
 };
 
-const estimatePriceUsd = (score) => {
-  // Simple deterministic estimate from score for quick portfolio triage.
-  if (score >= 90) return 25000;
-  if (score >= 80) return 12000;
-  if (score >= 70) return 6000;
-  if (score >= 60) return 3000;
-  if (score >= 50) return 1200;
-  if (score >= 40) return 500;
-  return 100;
+const parseMoney = (value) => {
+  const n = Number(String(value ?? '').replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(n)) return null;
+  if (n <= 0) return null;
+  return Math.round(n);
+};
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const getPrompt = (domain) =>
+  `Analyze "${domain}" for fair market resale value today. Return JSON only with fields:
+{
+  "score": number (0-100),
+  "fair_market_price_usd": number,
+  "low_estimate_usd": number,
+  "high_estimate_usd": number,
+  "confidence": number (0-1),
+  "reasoning": string (max 35 words)
+}`;
+
+const normalizeAnalysis = (domain, parsed) => {
+  const score = clampScore(parsed.score);
+  const tier = toTier(score);
+  const reasoning = String(parsed.reasoning || 'No reasoning provided').slice(0, 5000);
+  const modelPrice =
+    parseMoney(parsed.fair_market_price_usd) ??
+    parseMoney(parsed.price_usd) ??
+    parseMoney(parsed.price) ??
+    parseMoney(parsed.low_estimate_usd && parsed.high_estimate_usd
+      ? (Number(parsed.low_estimate_usd) + Number(parsed.high_estimate_usd)) / 2
+      : null) ??
+    0;
+  const estimatedPriceUsd = clamp(modelPrice, 0, 10000000);
+
+  return { score, tier, reasoning, estimatedPriceUsd };
 };
 
 const parseAnthropicTextPayload = (text) => {
@@ -90,11 +116,11 @@ const analyzeDomainWithOpenAI = async (domain) => {
           {
             role: 'system',
             content:
-              'You are a domain valuation assistant. Return only JSON with score (0-100) and reasoning.'
+              'You are a domain valuation assistant. Return only JSON with score, fair_market_price_usd, low_estimate_usd, high_estimate_usd, confidence, reasoning.'
           },
           {
             role: 'user',
-            content: `Analyze domain "${domain}" for brandability and resale potential. Keep reasoning under 35 words. Return JSON only: {"score": number, "reasoning": string}.`
+            content: getPrompt(domain)
           }
         ]
       }),
@@ -113,12 +139,9 @@ const analyzeDomainWithOpenAI = async (domain) => {
     }
 
     const parsed = parseStructuredJson(text);
-    const score = clampScore(parsed.score);
-    const reasoning = String(parsed.reasoning || 'No reasoning provided').slice(0, 5000);
-    const tier = toTier(score);
-    const estimatedPriceUsd = estimatePriceUsd(score);
+    const normalized = normalizeAnalysis(domain, parsed);
 
-    return { score, tier, reasoning, estimatedPriceUsd, provider: 'openai' };
+    return { ...normalized, provider: 'openai' };
   } catch (error) {
     if (error.name === 'AbortError') {
       throw new Error(`OpenAI request timed out after ${timeoutMs}ms`);
@@ -189,11 +212,11 @@ const analyzeDomain = async (domain) => {
           max_tokens: Number(process.env.ANTHROPIC_MAX_TOKENS || 120),
           temperature: 0,
           system:
-            'You are a domain valuation assistant. Return only valid JSON with score (0-100) and reasoning.',
+            'You are a domain valuation assistant. Return only valid JSON with score, fair_market_price_usd, low_estimate_usd, high_estimate_usd, confidence, reasoning.',
           messages: [
             {
               role: 'user',
-              content: `Analyze domain "${domain}" for brandability and resale potential. Keep reasoning under 35 words. Return JSON only: {"score": number, "reasoning": string}.`
+              content: getPrompt(domain)
             }
           ]
         }),
@@ -230,12 +253,9 @@ const analyzeDomain = async (domain) => {
       }
 
       const parsed = parseAnthropicTextPayload(text);
-      const score = clampScore(parsed.score);
-      const reasoning = String(parsed.reasoning || 'No reasoning provided').slice(0, 5000);
-      const tier = toTier(score);
-      const estimatedPriceUsd = estimatePriceUsd(score);
+      const normalized = normalizeAnalysis(domain, parsed);
 
-      return { score, tier, reasoning, estimatedPriceUsd, provider: 'anthropic' };
+      return { ...normalized, provider: 'anthropic' };
     } catch (error) {
       if (error.name === 'AbortError') {
         throw new Error(`Anthropic request timed out after ${timeoutMs}ms`);
